@@ -1,0 +1,16 @@
+{
+  "name": "my-js-project",
+  "version": "1.0.0",
+  "description": "A project to compare user data against the UN Security Council Consolidated List.",
+  "main": "src/main.html",
+  "scripts": {
+    "test": "node src/test/fetchUNListTest.js"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
