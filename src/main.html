@@ -860,6 +860,98 @@
             grid-template-columns: 1fr;
         }
     }
+  
+/* File and columns row */
+.file-column-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: var(--border-radius);
+    border: 1px solid #e0e0e0;
+}
+
+.file-upload-group {
+    flex: 0 0 280px;
+}
+
+.column-checkbox-group {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Vertical checkboxes container */
+.vertical-checkboxes-container {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 5px;
+    padding-right: 5px;
+}
+
+.vertical-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vertical-checkboxes .checkbox-item {
+    display: flex;
+    align-items: center;
+    background-color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+    transition: var(--transition);
+}
+
+.vertical-checkboxes .checkbox-item:hover {
+    background-color: #f0f7ff;
+    border-color: var(--secondary-color);
+}
+
+.vertical-checkboxes .checkbox-item input {
+    margin-right: 8px;
+}
+
+/* Scrollbar styling */
+.vertical-checkboxes-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.vertical-checkboxes-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.vertical-checkboxes-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.vertical-checkboxes-container::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .file-column-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .file-upload-group {
+        flex: 1;
+        width: 100%;
+    }
+    
+    .vertical-checkboxes-container {
+        max-height: 150px;
+    }
+}
+    
     </style>
 </head>
 <body>
@@ -968,22 +1060,25 @@
                 <div class="comparison-section">
                     <!-- Combined file input and column selector in one row -->
                     <div class="file-column-row">
-                        <div class="form-group">
-                            <label for="fileInput">Izvēlieties datu failu (TXT, CSV, XLSX):</label>
+                        <div class="form-group file-upload-group">
+                            <label for="fileInput">Izvēlieties datu failu:</label>
                             <div class="file-input-wrapper">
-                                <input type="file" id="fileInput" accept=".txt,.csv,.xlsx,.xls" onchange="handleFileInputChange(event)">
+                                <input type="file" id="fileInput" accept=".txt,.csv,.xlsx,.xls,.xlsm" onchange="handleFileInputChange(event)">
                                 <div class="file-label" id="fileName">Izvēlieties failu vai velciet to šeit</div>
+                                <div class="file-format-hint">(TXT, CSV, XLSX, XLS, XLSM)</div>
                             </div>
                         </div>
-
-                        <div class="form-group" id="columnSelector" style="display:none;">
-                            <label>Izvēlieties kolonnas salīdzināšanai:</label>
-                            <div class="horizontal-checkboxes" id="columnCheckboxes">
-                                <!-- Checkboxes will be inserted here -->
+                        
+                        <div class="form-group column-checkbox-group" id="columnSelector" style="display:none;">
+                            <label>Salīdzināt kolonnas:</label>
+                            <div class="vertical-checkboxes-container">
+                                <div class="vertical-checkboxes" id="columnCheckboxes">
+                                    <!-- Checkboxes will be inserted here -->
+                                </div>
                             </div>
                         </div>
                     </div>
-
+                    </div>
                     <div class="comparison-actions">
                         <button class="btn" id="compareBtn" onclick="compareData()">
                             <span id="compareSpinner" class="loading" style="display: none;"></span>
@@ -993,11 +1088,6 @@
                         <button class="btn btn-outline" onclick="refreshUNList()">
                             <span id="refreshSpinner" class="loading" style="display: none;"></span>
                             Atjaunot ANO sarakstu
-                        </button>
-                        <button class="btn btn-outline" onclick="showUKList()">Parādīt UK sarakstu</button>
-                        <button class="btn btn-outline" onclick="refreshUKList()">
-                            <span id="refreshUKSpinner" class="loading" style="display: none;"></span>
-                            Atjaunot UK sarakstu
                         </button>
                     </div>
 
@@ -1089,7 +1179,7 @@
                     </div>
                 </div>
 
-                <!-- File preview section -->
+                <!-- File preview section - this will show all columns -->
                 <div class="card" id="filePreview" style="display:none;">
                     <h2>Faila priekšskatījums <small>(pirmās 5 rindas)</small></h2>
                     <div class="table-responsive">
@@ -1166,6 +1256,7 @@
                 uk: false
             };
             let ukList = [];
+            
         
             // Initialize the application
             document.addEventListener('DOMContentLoaded', function() {
@@ -2442,13 +2533,18 @@ function loadCachedUKData() {
             const file = event.target.files[0];
             if (file) {
                 document.getElementById('fileName').textContent = file.name;
+                document.getElementById('compareBtn').disabled = true;
+                updateStatus('Notiek faila apstrāde...', 'warning');
+                
                 readUserFile(file).then(data => {
                     userFileData = data;
                     populateColumnCheckboxes(columnHeaders);
                     updateStatus('Fails veiksmīgi ielādēts. Lūdzu, izvēlieties kolonnas salīdzināšanai.', 'success');
                     updateStepIndicator(2);
+                    document.getElementById('compareBtn').disabled = false;
                 }).catch(error => {
                     updateStatus('Kļūda faila apstrādē: ' + error.message, 'error');
+                    document.getElementById('columnSelector').style.display = 'none';
                 });
             }
         }
@@ -2462,26 +2558,37 @@ function loadCachedUKData() {
                         let data = [];
                         
                         if (file.name.endsWith('.txt') || file.name.endsWith('.csv')) {
-                            const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
-                            columnHeaders = parseCSVLine(lines[0]).map(header => header.trim().toLowerCase());
-                            data = lines.slice(1).map(line => parseCSVLine(line).map(cell => cell.trim().toLowerCase()));
-                        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                            const workbook = XLSX.read(content, { type: file.name.endsWith('.xlsx') ? 'binary' : 'array' });
+                            // Handle CSV/TXT files
+                            const lines = content.split('\n');
+                            columnHeaders = parseCSVLine(lines[0]).map(h => h.trim());
+                            
+                            for (let i = 1; i < lines.length; i++) {
+                                if (lines[i].trim()) {
+                                    const row = parseCSVLine(lines[i]);
+                                    data.push(row);
+                                }
+                            }
+                        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.xlsm')) {
+                            // Handle Excel files
+                            const workbook = XLSX.read(content, { 
+                                type: file.name.endsWith('.xlsx') || file.name.endsWith('.xlsm') ? 'binary' : 'array' 
+                            });
                             const sheetName = workbook.SheetNames[0];
                             const sheet = workbook.Sheets[sheetName];
                             const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                            columnHeaders = json[0].map(cell => String(cell).trim().toLowerCase());
+                            
+                            columnHeaders = json[0].map(cell => String(cell).trim());
                             data = json.slice(1).map(row => {
                                 const fullRow = new Array(columnHeaders.length).fill('');
                                 row.forEach((cell, i) => {
                                     if (i < columnHeaders.length) {
-                                        fullRow[i] = String(cell).trim().toLowerCase();
+                                        fullRow[i] = String(cell).trim();
                                     }
                                 });
                                 return fullRow;
                             });
                         } else {
-                            reject(new Error('Nepieļaujams faila formāts. Atbalstītie formāti: TXT, CSV, XLSX'));
+                            reject(new Error('Nepieļaujams faila formāts. Atbalstītie formāti: TXT, CSV, XLSX, XLS, XLSM'));
                             return;
                         }
                         
@@ -2492,14 +2599,16 @@ function loadCachedUKData() {
                 };
                 reader.onerror = (error) => reject(error);
                 
-                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xlsm')) {
                     reader.readAsBinaryString(file);
+                } else if (file.name.endsWith('.xls')) {
+                    reader.readAsArrayBuffer(file);
                 } else {
                     reader.readAsText(file);
                 }
             });
-        } 
-    
+        }
+
         function parseCSVLine(line) {
             const result = [];
             let current = '';
@@ -2526,13 +2635,13 @@ function loadCachedUKData() {
             result.push(current);
             return result;
         }
-    
+
         function populateColumnCheckboxes(headers) {
             const columnSelector = document.getElementById('columnSelector');
             const columnCheckboxes = document.getElementById('columnCheckboxes');
             columnCheckboxes.innerHTML = '';
             selectedColumns = [];
-    
+
             if (headers && headers.length > 0) {
                 headers.forEach((header, index) => {
                     const checkboxId = `columnCheckbox${index}`;
@@ -2540,12 +2649,12 @@ function loadCachedUKData() {
                     checkboxItem.className = 'checkbox-item';
                     checkboxItem.innerHTML = `
                         <input type="checkbox" id="${checkboxId}" value="${index}" 
-                               onchange="updateColumnSelection(${index}, this.checked)">
+                            onchange="updateColumnSelection(${index}, this.checked)">
                         <label for="${checkboxId}">${header}</label>
                     `;
                     columnCheckboxes.appendChild(checkboxItem);
                 });
-    
+
                 columnSelector.style.display = 'block';
                 document.getElementById('filePreview').style.display = 'block';
                 updatePreviewTable();
@@ -2554,7 +2663,7 @@ function loadCachedUKData() {
                 updateStatus('Failā nav atrastas kolonnas', 'error');
             }
         }
-    
+
         function updateColumnSelection(columnIndex, isChecked) {
             if (isChecked) {
                 if (!selectedColumns.includes(columnIndex)) {
@@ -2565,22 +2674,30 @@ function loadCachedUKData() {
             }
             updatePreviewTable();
         }
-    
+
         function updatePreviewTable() {
             const previewTableHead = document.getElementById('previewTableHead');
             const previewTableBody = document.getElementById('previewTableBody');
             
-            const headerRow = previewTableHead.querySelector('tr');
+            // Clear existing content
+            previewTableHead.innerHTML = '';
+            previewTableBody.innerHTML = '';
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
             headerRow.innerHTML = '<th>Nr.</th>';
             
+            // Determine which columns to show (selected columns or all if none selected)
             const columnsToShow = selectedColumns.length > 0 ? selectedColumns : [...Array(columnHeaders.length).keys()];
             
+            // Add column headers
             columnsToShow.forEach(index => {
                 headerRow.innerHTML += `<th>${columnHeaders[index]}</th>`;
             });
-    
-            previewTableBody.innerHTML = '';
             
+            previewTableHead.appendChild(headerRow);
+
+            // Add data rows (first 5 rows)
             const rowsToShow = Math.min(5, userFileData.length);
             for (let i = 0; i < rowsToShow; i++) {
                 const row = userFileData[i];
