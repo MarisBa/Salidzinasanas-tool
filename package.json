@@ -4,12 +4,19 @@
   "description": "A project to compare user data against the UN Security Council Consolidated List.",
   "main": "src/main.html",
   "scripts": {
-    "test": "node src/test/fetchUNListTest.js"
+    "test": "node src/test/fetchUNListTest.js",
+    "start": "node server.js"
   },
   "dependencies": {
-    "xlsx": "^0.18.5"
+    "axios": "^1.8.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "xlsx": "^0.18.5",
+    "xml2js": "^0.6.2"
   },
-  "devDependencies": {},
   "keywords": [],
   "author": "",
   "license": "ISC"
