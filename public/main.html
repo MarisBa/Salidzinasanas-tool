@@ -1032,7 +1032,47 @@
   border-radius: 5px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-    
+    /* Add these styles to your existing CSS */
+#euResults table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+#euResults th {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 12px;
+    text-align: left;
+}
+
+#euResults td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #ddd;
+}
+
+#euResults tr:hover {
+    background-color: #f5f5f5;
+}
+
+.eu-pagination {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+    align-items: center;
+}
+
+.eu-page-info {
+    font-weight: 500;
+    color: var(--dark-color);
+}
+
+.no-results {
+    text-align: center;
+    padding: 30px;
+    color: var(--dark-color);
+}
     </style>
 </head>
 <body>
@@ -1045,6 +1085,7 @@
             <div class="tab active" onclick="switchTab('search')">Meklēšana</div>
             <div class="tab" onclick="switchTab('compare')">Salīdzināšana</div>
             <div class="tab" onclick="switchTab('ofac')">OFAC Sankciju saraksts</div>
+            <div class="tab" onclick="switchTab('eu')">ES Sankciju saraksts</div>
         </div>
 
         <!-- Search Tab -->
@@ -1348,6 +1389,35 @@
         </div>
     </div>
 
+    <!-- Add this as a new tab content -->
+    <div id="eu-tab" class="tab-content">
+        <div class="card">
+            <h1>ES Sankciju sarakstu apskate</h1>
+            
+            <div class="last-updated" id="euLastUpdated"></div>
+            
+            <div class="controls">
+                <button class="btn" id="euRefreshBtn">Atjaunot datus</button>
+                <button class="btn btn-outline" id="euExportBtn">Eksportēt datus</button>
+                <button class="btn btn-outline" id="euTestConnectionBtn">Pārbaudīt savienojumu</button>
+            </div>
+            
+            <div class="search-container">
+                <input type="text" id="euSearch" class="form-control" placeholder="Meklēt pēc vārda, ID, valsts vai programmas...">
+            </div>
+            
+            <div id="euStatus" class="status status-warning">Notiek inicializācija...</div>
+            
+            <div id="euResults" class="hidden"></div>
+            
+            <div class="pagination hidden" id="euPagination">
+                <button class="page-btn" id="euPrevBtn">Iepriekšējā</button>
+                <span id="euPageInfo">Lapa 1 no 1</span>
+                <button class="page-btn" id="euNextBtn">Nākamā</button>
+            </div>
+        </div>
+    </div>
+
     <script>
 
             // Global variables
@@ -1369,6 +1439,10 @@
                 uk: false
             };
             let ukList = [];
+            let euSanctionsData = [];
+            let euFilteredData = [];
+            let euCurrentPage = 1;
+            let euTabInitialized = false;
             
         
             // Initialize the application
@@ -3356,6 +3430,238 @@ function loadCachedUKData() {
                 timeout = setTimeout(() => func.apply(this, args), wait);
             };
         }
+
+
+        
+        // Add this function to initialize the EU tab
+        function initEUTab() {
+            if (!euTabInitialized) {
+                document.getElementById('euRefreshBtn').addEventListener('click', fetchEUSanctionsData);
+                document.getElementById('euExportBtn').addEventListener('click', exportEUData);
+                document.getElementById('euTestConnectionBtn').addEventListener('click', testEUConnection);
+                document.getElementById('euSearch').addEventListener('input', debounce(handleEUSearch, 300));
+                document.getElementById('euPrevBtn').addEventListener('click', goToEUPreviousPage);
+                document.getElementById('euNextBtn').addEventListener('click', goToEUNextPage);
+                
+                fetchEUSanctionsData();
+                euTabInitialized = true;
+            }
+        }
+
+        // Add these EU-specific functions
+        async function fetchEUSanctionsData() {
+            try {
+                updateEUStatus('Notiek datu ielāde...', 'warning');
+                document.getElementById('euRefreshBtn').disabled = true;
+                document.getElementById('euExportBtn').disabled = true;
+                
+                const response = await fetch('/api/eu-sanctions/list');
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                }
+                
+                const { data, lastUpdated, count } = await response.json();
+                
+                if (!Array.isArray(data)) {
+                    throw new Error("Invalid data format received from server");
+                }
+                
+                euSanctionsData = data;
+                euFilteredData = [...euSanctionsData];
+                
+                updateEULastUpdated(lastUpdated);
+                displayEUData();
+                
+                updateEUStatus(`Ielādēti ${count} ieraksti`, 'success');
+            } catch (error) {
+                console.error('Error fetching EU data:', error);
+                updateEUStatus(`Kļūda: ${error.message}`, 'error');
+                
+                // Try to load cached data if available
+                const cachedData = localStorage.getItem('euSanctionsCache');
+                if (cachedData) {
+                    try {
+                        const parsedData = JSON.parse(cachedData);
+                        euSanctionsData = parsedData.data || [];
+                        euFilteredData = [...euSanctionsData];
+                        updateEUStatus(`Izmantoti saglabātie dati (${euSanctionsData.length} ieraksti)`, 'warning');
+                        displayEUData();
+                    } catch (parseError) {
+                        console.error('Error parsing cached data:', parseError);
+                    }
+                }
+            } finally {
+                document.getElementById('euRefreshBtn').disabled = false;
+                document.getElementById('euExportBtn').disabled = euSanctionsData.length === 0;
+            }
+        }
+
+        function displayEUData() {
+            const resultsEl = document.getElementById('euResults');
+            const pageInfoEl = document.getElementById('euPageInfo');
+            const prevBtn = document.getElementById('euPrevBtn');
+            const nextBtn = document.getElementById('euNextBtn');
+            
+            const ITEMS_PER_PAGE = 15;
+            const startIdx = (euCurrentPage - 1) * ITEMS_PER_PAGE;
+            const endIdx = startIdx + ITEMS_PER_PAGE;
+            const itemsToShow = euFilteredData.slice(startIdx, endIdx);
+            const totalPages = Math.ceil(euFilteredData.length / ITEMS_PER_PAGE);
+            
+            if (euFilteredData.length === 0) {
+                resultsEl.innerHTML = '<div class="no-results">Nav atrasts neviens atbilstošs ieraksts</div>';
+                document.getElementById('euPagination').classList.add('hidden');
+                return;
+            }
+            
+            let html = `
+                <div class="results-info">Rāda ${startIdx + 1}-${endIdx} no ${euFilteredData.length} ierakstiem</div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nr.</th>
+                                <th>Vārds</th>
+                                <th>Tips</th>
+                                <th>Programma</th>
+                                <th>Regulējums</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            itemsToShow.forEach((item, index) => {
+                const globalIndex = startIdx + index;
+                html += `
+                    <tr>
+                        <td>${globalIndex + 1}</td>
+                        <td>${item.name || 'N/A'}</td>
+                        <td>${item.type || 'N/A'}</td>
+                        <td>${item.programme || 'N/A'}</td>
+                        <td>${item.regulation || 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            resultsEl.innerHTML = html;
+            resultsEl.classList.remove('hidden');
+            document.getElementById('euPagination').classList.remove('hidden');
+            
+            pageInfoEl.textContent = `Lapa ${euCurrentPage} no ${totalPages}`;
+            prevBtn.disabled = euCurrentPage === 1;
+            nextBtn.disabled = euCurrentPage === totalPages;
+        }
+
+        function handleEUSearch() {
+            const query = document.getElementById('euSearch').value.trim().toLowerCase();
+            
+            if (!query) {
+                euFilteredData = [...euSanctionsData];
+            } else {
+                euFilteredData = euSanctionsData.filter(item => {
+                    return (
+                        (item.name && item.name.toLowerCase().includes(query)) ||
+                        (item.type && item.type.toLowerCase().includes(query)) ||
+                        (item.programme && item.programme.toLowerCase().includes(query)) ||
+                        (item.regulation && item.regulation.toLowerCase().includes(query))
+                    );
+                });
+            }
+            
+            euCurrentPage = 1;
+            displayEUData();
+        }
+
+        function goToEUPreviousPage() {
+            if (euCurrentPage > 1) {
+                euCurrentPage--;
+                displayEUData();
+            }
+        }
+
+        function goToEUNextPage() {
+            const totalPages = Math.ceil(euFilteredData.length / 15);
+            if (euCurrentPage < totalPages) {
+                euCurrentPage++;
+                displayEUData();
+            }
+        }
+
+        function updateEULastUpdated(timestamp) {
+            const date = new Date(timestamp);
+            document.getElementById('euLastUpdated').textContent = `Pēdējais atjauninājums: ${date.toLocaleString()}`;
+        }
+
+        function updateEUStatus(message, type) {
+            const statusEl = document.getElementById('euStatus');
+            statusEl.textContent = message;
+            statusEl.className = `status status-${type}`;
+        }
+
+        function exportEUData() {
+            if (euSanctionsData.length === 0) {
+                alert('Nav datu eksportēšanai');
+                return;
+            }
+            
+            const dataToExport = euFilteredData.length > 0 ? euFilteredData : euSanctionsData;
+            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `eu-sanctions-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function testEUConnection() {
+            const statusEl = document.getElementById('euStatus');
+            statusEl.innerHTML = '<span class="loading"></span> Pārbauda savienojumu...';
+            
+            try {
+                const response = await fetch('/api/eu-sanctions/test-connection');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusEl.innerHTML = `
+                        <div class="status status-success">
+                            Savienojums veiksmīgs!
+                            <div style="margin-top: 5px;">${data.message}</div>
+                            <div>Pēdējais atjauninājums: ${new Date(data.timestamp).toLocaleString()}</div>
+                        </div>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <div class="status status-error">
+                            Savienojuma pārbaude neveiksmīga: ${data.message || 'Nezināma kļūda'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusEl.innerHTML = `
+                    <div class="status status-error">
+                        Savienojuma pārbaude neveiksmīga: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Update the switchTab function to handle EU tab
+        const originalSwitchTab = window.switchTab;
+        window.switchTab = function(tabId) {
+            originalSwitchTab(tabId);
+            if (tabId === 'eu') {
+                initEUTab();
+            }
+        };
     </script>
 </body>
 </html>

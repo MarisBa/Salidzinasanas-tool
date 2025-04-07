@@ -13,6 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const writeFile = promisify(fs.writeFile);
 const readFile = promisify(fs.readFile);
+const iconv = require('iconv-lite');
+const cheerio = require('cheerio');
 
 // Rate limiting
 const limiter = rateLimit({
@@ -45,10 +47,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 const OFAC_XML_URL = 'https://www.treasury.gov/ofac/downloads/sdn.xml';
 const CACHE_FILE = path.join(__dirname, 'ofac-cache.json');
 
+
+const EU_XML_URL = 'https://sankcijas.fid.gov.lv/files/xmlFullSanctionsList_1_1.xml';
+const EU_CACHE_FILE = path.join(__dirname, 'eu-cache.json');
+
+
 // Cache for storing parsed data
 let sanctionsCache = {
   data: [],
   lastUpdated: null,
+  count: 0
+};
+
+let euSanctionsCache = {
+  data: [],
+  lastUpdated: new Date().toISOString(),
   count: 0
 };
 
@@ -128,6 +141,68 @@ async function fetchOFACData() {
   }
 }
 
+async function fetchEUSanctionsData() {
+  try {
+    console.log('Fetching latest EU sanctions data from:', EU_XML_URL);
+    
+    const response = await axios.get(EU_XML_URL, {
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    // Decode the response using iconv-lite
+    const xmlData = iconv.decode(response.data, 'win1257');
+    
+    // Use cheerio to parse the XML
+    const $ = cheerio.load(xmlData, { 
+      xmlMode: true,
+      decodeEntities: false,
+      recognizeSelfClosing: true
+    });
+
+    const entries = [];
+    
+    $('sanctionEntity').each((i, el) => {
+      const $el = $(el);
+      
+      const entry = {
+        id: $el.attr('logicalId') || 'N/A',
+        euReferenceNumber: $el.attr('euReferenceNumber') || 'N/A',
+        firstName: $el.find('nameAlias').attr('firstName') || 'N/A',
+        lastName: $el.find('nameAlias').attr('lastName') || 'N/A',
+        fullName: $el.find('nameAlias').attr('wholeName') || 'N/A',
+        type: $el.find('subjectType').attr('code') || 'N/A',
+        remark: $el.find('remark').text().trim() || 'N/A',
+        regulation: $el.find('regulation').attr('numberTitle') || 'N/A',
+        regulationType: $el.find('regulation').attr('regulationType') || 'N/A',
+        regulationDate: $el.find('regulation').attr('publicationDate') || 'N/A',
+        regulationUrl: $el.find('regulation publicationUrl').text().trim() || 'N/A',
+        programme: $el.find('regulation').attr('programme') || 'N/A',
+        gender: $el.find('nameAlias').attr('gender') || 'N/A',
+        strong: $el.find('nameAlias').attr('strong') || 'N/A'
+      };
+
+      entry.name = entry.fullName !== 'N/A' 
+        ? entry.fullName.normalize('NFKC') 
+        : `${entry.firstName !== 'N/A' ? entry.firstName.normalize('NFKC') : ''} ${entry.lastName !== 'N/A' ? entry.lastName.normalize('NFKC') : ''}`.trim() || 'Unnamed Entity';
+      
+      entries.push(entry);
+    });
+
+    euSanctionsCache = {
+      data: entries,
+      lastUpdated: new Date().toISOString(),
+      count: entries.length
+    };
+
+    await writeFile(EU_CACHE_FILE, JSON.stringify(euSanctionsCache, null, 2));
+    console.log(`Fetched ${entries.length} EU entries`);
+    return entries;
+  } catch (error) {
+    console.error('Error fetching EU sanctions data:', error.message);
+    throw error;
+  }
+}
 // API Endpoints
 app.get('/api/sanctions/list', async (req, res) => {
   try {
@@ -224,19 +299,113 @@ app.get('/api/sanctions/test-connection', (req, res) => {
   });
 });
 
+
+app.post('/api/eu-sanctions/search', async (req, res) => {
+  try {
+    const { query, limit = 100 } = req.body;
+    
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request',
+        message: 'Search query is required and must be a string'
+      });
+    }
+    
+    const searchTerm = query.toLowerCase();
+    const results = euSanctionsCache.data.filter(item => {
+      return (
+        (item.name && item.name.toLowerCase().includes(searchTerm)) ||
+        (item.type && item.type.toLowerCase().includes(searchTerm)) ||
+        (item.programme && item.programme.toLowerCase().includes(searchTerm)) ||
+        (item.regulation && item.regulation.toLowerCase().includes(searchTerm))
+      );
+    }).slice(0, limit);
+    
+    res.json({
+      success: true,
+      data: results,
+      count: results.length,
+      total: euSanctionsCache.count
+    });
+    
+  } catch (error) {
+    console.error('EU Search error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'EU Search failed',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/eu-sanctions/test-connection', (req, res) => {
+  res.json({
+    success: true,
+    message: 'EU Sanctions API is working',
+    timestamp: new Date().toISOString(),
+    entryCount: euSanctionsCache.count
+  });
+});
+
+
+app.get('/api/eu-sanctions/list', async (req, res) => {
+  try {
+    // Check if force refresh is requested
+    const forceRefresh = req.query.force === 'true';
+    
+    if (!forceRefresh && euSanctionsCache.data.length > 0) {
+      return res.json({
+        success: true,
+        data: euSanctionsCache.data,
+        lastUpdated: euSanctionsCache.lastUpdated,
+        count: euSanctionsCache.count,
+        _cached: true
+      });
+    }
+
+    // Fetch fresh data
+    const data = await fetchEUSanctionsData();
+    res.json({
+      success: true,
+      data,
+      lastUpdated: euSanctionsCache.lastUpdated,
+      count: euSanctionsCache.count,
+      _cached: false
+    });
+  } catch (error) {
+    console.error('EU List error:', error);
+    
+    // Try to return cached data if available
+    if (euSanctionsCache.data.length > 0) {
+      return res.status(200).json({
+        success: true,
+        data: euSanctionsCache.data,
+        lastUpdated: euSanctionsCache.lastUpdated,
+        count: euSanctionsCache.count,
+        _cached: true,
+        _warning: 'Failed to fetch fresh data - serving cached data: ' + error.message
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch EU sanctions data',
+      message: error.message,
+      details: error.stack
+    });
+  }
+});
 // Start server
 async function startServer() {
   // Load cache from file if available
-  await loadCacheFromFile();
+  await Promise.all([loadCacheFromFile(), loadEUCacheFromFile()]);
   
   // Initial data fetch
   try {
-    await fetchOFACData();
+    await Promise.all([fetchOFACData(), fetchEUSanctionsData()]);
   } catch (err) {
     console.error('Initial data fetch failed:', err);
-    if (sanctionsCache.data.length === 0) {
-      console.error('No data available - server starting with empty dataset');
-    }
   }
   
   // Start the server
@@ -252,3 +421,15 @@ startServer().catch(err => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
+async function loadEUCacheFromFile() {
+  try {
+    const data = await readFile(EU_CACHE_FILE, 'utf8');
+    euSanctionsCache = JSON.parse(data);
+    console.log('EU Cache loaded from file');
+    return true;
+  } catch (err) {
+    console.log('No EU cache file found or error reading it');
+    return false;
+  }
+}
