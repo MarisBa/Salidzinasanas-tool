@@ -1170,7 +1170,6 @@
             </div>
         </div>
 
-        <!-- Compare Tab -->
         <div id="compare-tab" class="tab-content">
             <div class="card">
                 <div class="step-indicator">
@@ -1208,6 +1207,7 @@
                             Salīdzināt
                         </button>
                         <button class="btn btn-outline" onclick="showUNList()">Parādīt ANO sarakstu</button>
+                        <button class="btn btn-outline" onclick="showOFACList()">Parādīt OFAC sarakstu</button>
                         <button class="btn btn-outline" onclick="refreshUNList()">
                             <span id="refreshSpinner" class="loading" style="display: none;"></span>
                             Atjaunot ANO sarakstu
@@ -1220,42 +1220,19 @@
                             <label class="sanction-list-item">
                                 <input type="checkbox" id="unListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
-                                <span class="sanction-list-label">ANO saraksts</span>
+                                <span class="sanction-list-label">ANO sankciju saraksts</span>
                             </label>
-                            <!-- In the HTML section, add this to the sanction lists container -->
                             <label class="sanction-list-item">
                                 <input type="checkbox" id="euListCheckbox">
                                 <span class="custom-checkbox"></span>
-                                <span class="sanction-list-label">ES sankciju saraksts</span>
+                                <span class="sanction-list-label">Eiropas Savienības sankciju saraksts</span>
                             </label>
                             <label class="sanction-list-item">
-                                <input type="checkbox" id="usListCheckbox">
+                                <input type="checkbox" id="ofacListCheckbox">
                                 <span class="custom-checkbox"></span>
-                                <span class="sanction-list-label">ASV saraksts</span>
-                            </label>
-                            <label class="sanction-list-item">
-                                <input type="checkbox" id="ukListCheckbox">
-                                <span class="custom-checkbox"></span>
-                                <span class="sanction-list-label">UK saraksts</span>
+                                <span class="sanction-list-label">OFAC sankciju saraksts</span>
                             </label>
                         </div>
-                    </div>
-
-                                        <!-- Add this to your HTML, perhaps in the compare tab section -->
-                    <div class="debug-section card" style="margin-top: 20px;">
-                        <h3>Testa Funkcijas</h3>
-                        <div class="debug-buttons">
-                            <button class="btn btn-outline" onclick="testEUConnection()">Pārbaudīt ES savienojumu</button>
-                            <button class="btn btn-outline" onclick="viewRawEUDownload()">Skatīt neapstrādātos datus</button>
-                            <button class="btn btn-outline" onclick="simulateEUDownload()">Simulēt veiksmīgu lejupielādi</button>
-                        </div>
-                        <div id="debugOutput" class="debug-output" style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 4px; display: none;"></div>
-                    </div>
-
-                    <div class="debug-buttons">
-                        <button class="btn btn-outline" onclick="testUKConnection()">Pārbaudīt UK savienojumu</button>
-                        <button class="btn btn-outline" onclick="viewRawUKDownload()">Skatīt neapstrādātos datus</button>
-                        <button class="btn btn-outline" onclick="simulateUKDownload()">Simulēt veiksmīgu lejupielādi</button>
                     </div>
 
                     <div id="status" class="status status-warning">
@@ -1270,7 +1247,6 @@
                         <div class="progress" id="downloadProgress" style="width: 0%"></div>
                     </div>
                 </div>
-
 
             
                 <!-- Compare results section -->
@@ -1421,6 +1397,7 @@
     <script>
 
             // Global variables
+            let ofacList = [];
             let unList = [];
             let euList = [];
             let columnHeaders = [];
@@ -1436,13 +1413,16 @@
                 un: true,
                 eu: false,
                 us: false,
-                uk: false
+                uk: false,
+                ofac: false
             };
             let ukList = [];
             let euSanctionsData = [];
             let euFilteredData = [];
             let euCurrentPage = 1;
             let euTabInitialized = false;
+            // Add these to your global variables section at the top
+        
             
         
             // Initialize the application
@@ -1463,17 +1443,25 @@
                         loadSanctionsDataForSearch();
                     }
                 });
-            });
 
-                    // Update the activeLists object in DOMContentLoaded
-        document.getElementById('ukListCheckbox').addEventListener('change', function() {
-            activeLists.uk = this.checked;
-            if (this.checked && ukList.length === 0) {
-                fetchUKList();
-            } else {
-                loadSanctionsDataForSearch();
-            }
-        });
+                document.getElementById('ofacListCheckbox').addEventListener('change', function() {
+                    activeLists.ofac = this.checked;
+                    if (this.checked && ofacList.length === 0) {
+                        fetchOFACList();
+                    } else {
+                        loadSanctionsDataForSearch();
+                    }
+                });
+
+                document.getElementById('ukListCheckbox').addEventListener('change', function() {
+                    activeLists.uk = this.checked;
+                    if (this.checked && ukList.length === 0) {
+                        fetchUKList();
+                    } else {
+                        loadSanctionsDataForSearch();
+                    }
+                });
+            });
 
 // UK specific functions
 async function testUKConnection() {
@@ -2177,6 +2165,7 @@ function loadCachedUKData() {
                 if (activeLists.un) sanctionsData = sanctionsData.concat(unList);
                 if (activeLists.eu) sanctionsData = sanctionsData.concat(euList);
                 if (activeLists.uk) sanctionsData = sanctionsData.concat(ukList);
+                if (activeLists.ofac) sanctionsData = sanctionsData.concat(ofacList);
             }
         
             function isOrganization(name) {
@@ -2910,7 +2899,7 @@ function loadCachedUKData() {
                 updateStatus('Lūdzu izvēlieties vismaz vienu kolonnu salīdzināšanai.', 'error');
                 return;
             }
-        
+
             try {
                 updateStatus('Notiek datu salīdzināšana...', 'warning');
                 document.getElementById('compareSpinner').style.display = 'inline-block';
@@ -2928,20 +2917,29 @@ function loadCachedUKData() {
                         
                         // Check against all active lists
                         let isMatch = false;
-                        if (activeLists.un) {
-                            isMatch = isMatch || unList.some(item => 
-                                item.name.toLowerCase().includes(name.toLowerCase())
-                            );
+                        
+                        if (activeLists.un && unList.some(item => 
+                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
+                        )) {
+                            isMatch = true;
                         }
-                        if (activeLists.eu) {
-                            isMatch = isMatch || euList.some(item => 
-                                item.name.toLowerCase().includes(name.toLowerCase())
-                            );
+                        
+                        if (activeLists.eu && euList.some(item => 
+                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
+                        )) {
+                            isMatch = true;
                         }
-                        if (activeLists.uk) {
-                            isMatch = isMatch || ukList.some(item => 
-                                item.name.toLowerCase().includes(name.toLowerCase())
-                            );
+                        
+                        if (activeLists.uk && ukList.some(item => 
+                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
+                        )) {
+                            isMatch = true;
+                        }
+                        
+                        if (activeLists.ofac && ofacList.some(item => 
+                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
+                        )) {
+                            isMatch = true;
                         }
                         
                         return isMatch;
@@ -2958,7 +2956,6 @@ function loadCachedUKData() {
                         });
                     }
                 });
-                
                 
                 displayMatches(allMatches, matchedColumns.size);
                 
@@ -3006,11 +3003,29 @@ function loadCachedUKData() {
                     
                     // Find which lists contain this match
                     const matchedLists = [];
-                    if (activeLists.un && unList.some(item => item.name.toLowerCase().includes(matchValue.toLowerCase()))) {
+                    
+                    if (activeLists.un && unList.some(item => 
+                        item.name && item.name.toLowerCase().includes(matchValue.toLowerCase())
+                    )) {
                         matchedLists.push('ANO');
                     }
-                    if (activeLists.eu && euList.some(item => item.name.toLowerCase().includes(matchValue.toLowerCase()))) {
+                    
+                    if (activeLists.eu && euList.some(item => 
+                        item.name && item.name.toLowerCase().includes(matchValue.toLowerCase())
+                    )) {
                         matchedLists.push('ES');
+                    }
+                    
+                    if (activeLists.uk && ukList.some(item => 
+                        item.name && item.name.toLowerCase().includes(matchValue.toLowerCase())
+                    )) {
+                        matchedLists.push('UK');
+                    }
+                    
+                    if (activeLists.ofac && ofacList.some(item => 
+                        item.name && item.name.toLowerCase().includes(matchValue.toLowerCase())
+                    )) {
+                        matchedLists.push('OFAC');
                     }
                     
                     const matchDiv = document.createElement('div');
@@ -3039,7 +3054,6 @@ function loadCachedUKData() {
                 matchesElement.appendChild(noMatchesDiv);
             }
         }
-        
         function updateStepIndicator(step) {
             const steps = document.querySelectorAll('.step');
             
@@ -3091,8 +3105,15 @@ function loadCachedUKData() {
 
             // Initialize OFAC tab
             async function initOFACTab() {
+                const ofacStatusEl = document.getElementById('ofacStatus');
                 ofacStatusEl.innerHTML = '<span class="loading"></span>Notiek datu ielāde...';
-                await fetchOFACData();
+                
+                if (ofacList.length === 0) {
+                    await fetchOFACList(); // Use the same fetch function as the compare tab
+                }
+                
+                displayOFACData(ofacList); // Display the data
+                ofacStatusEl.innerHTML = `<div class="status status-success">Ielādēti ${ofacList.length} ieraksti</div>`;
             }
 
             // Test connection to API
@@ -3126,7 +3147,123 @@ function loadCachedUKData() {
                     `;
                 }
             }
-            
+            let ofacList = [];
+
+            async function fetchOFACList() {
+            try {
+                updateStatus('Notiek OFAC saraksta lejupielāde...', 'warning');
+                document.getElementById('refreshSpinner').style.display = 'inline-block';
+                
+                // Show progress bar
+                document.getElementById('progressContainer').style.display = 'block';
+                document.getElementById('progressLabel').textContent = 'Lejupielādē OFAC sarakstu...';
+                document.getElementById('downloadProgress').style.width = '0%';
+
+                // Use proxy to avoid CORS issues
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://www.treasury.gov/ofac/downloads/sdn.xml')}`;
+                
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error('Proxy fetch failed');
+                
+                const data = await response.json();
+                ofacList = parseOFACSanctionsXML(data.contents);
+                
+                if (ofacList.length === 0) {
+                    throw new Error('No data received from OFAC');
+                }
+                
+                // Complete progress
+                document.getElementById('downloadProgress').style.width = '100%';
+                document.getElementById('progressLabel').textContent = 'Lejupielāde pabeigta!';
+                
+                setTimeout(() => {
+                    document.getElementById('progressContainer').style.display = 'none';
+                }, 1000);
+                
+                loadSanctionsDataForSearch();
+                updateStatus(`OFAC sankciju saraksts veiksmīgi ielādēts (${ofacList.length} ieraksti)`, 'success');
+            } catch (error) {
+                console.error('Error fetching OFAC list:', error);
+                document.getElementById('progressContainer').style.display = 'none';
+                updateStatus('Kļūda ielādējot OFAC sankciju sarakstu: ' + error.message, 'error');
+                loadCachedOFACData();
+            } finally {
+                document.getElementById('refreshSpinner').style.display = 'none';
+            }
+        }
+
+        function parseOFACSanctionsXML(xmlString) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+                const entries = xmlDoc.getElementsByTagName('sdnEntry');
+                
+                const result = [];
+                
+                for (let i = 0; i < entries.length; i++) {
+                    const entry = entries[i];
+                    const firstName = entry.getElementsByTagName('firstName')[0]?.textContent;
+                    const lastName = entry.getElementsByTagName('lastName')[0]?.textContent;
+                    const name = [firstName, lastName].filter(Boolean).join(' ').trim() || 
+                                entry.getElementsByTagName('aka')[0]?.textContent ||
+                                entry.getElementsByTagName('lastName')[0]?.textContent;
+                    
+                    if (name) {
+                        const item = {
+                            name: name,
+                            type: entry.getAttribute('type') || 'Entity',
+                            list: 'OFAC',
+                            addresses: [],
+                            programs: [],
+                            remarks: ''
+                        };
+                        
+                        // Get addresses
+                        const addresses = entry.getElementsByTagName('address');
+                        for (let j = 0; j < addresses.length; j++) {
+                            const address = addresses[j].textContent;
+                            if (address) item.addresses.push(address.trim());
+                        }
+                        
+                        // Get programs
+                        const programs = entry.getElementsByTagName('programList')[0]?.getElementsByTagName('program');
+                        if (programs) {
+                            for (let j = 0; j < programs.length; j++) {
+                                item.programs.push(programs[j].textContent.trim());
+                            }
+                        }
+                        
+                        // Get remarks
+                        item.remarks = entry.getElementsByTagName('remarks')[0]?.textContent || '';
+                        
+                        result.push(item);
+                    }
+                }
+                
+                // Cache the data
+                localStorage.setItem('ofacSanctionsList', JSON.stringify(result));
+                localStorage.setItem('ofacSanctionsListTimestamp', new Date().toISOString());
+                
+                return result;
+            } catch (e) {
+                console.error('OFAC XML parsing error:', e);
+                return [];
+            }
+        }
+
+        function loadCachedOFACData() {
+            document.getElementById('progressContainer').style.display = 'none';
+            const cachedData = localStorage.getItem('ofacSanctionsList');
+            if (cachedData) {
+                ofacList = JSON.parse(cachedData);
+                const timestamp = localStorage.getItem('ofacSanctionsListTimestamp');
+                loadSanctionsDataForSearch();
+                updateStatus(`Ielādēts saglabāts OFAC saraksts (${new Date(timestamp).toLocaleString()})`, 'warning');
+            } else {
+                updateStatus('Nav saglabāta OFAC saraksta. Lūdzu, mēģiniet atjaunot.', 'error');
+            }
+        }
+                        
             // Fetch OFAC data from API
             async function fetchOFACData() {
                 try {
@@ -3421,6 +3558,59 @@ function loadCachedUKData() {
                 }
             };
         });
+
+
+        function showOFACList() {
+            if (ofacList.length === 0) {
+                updateStatus('OFAC saraksts vēl nav ielādēts. Lūdzu, uzgaidiet...', 'warning');
+                fetchOFACList().then(() => {
+                    displayOFACList();
+                });
+            } else {
+                displayOFACList();
+            }
+        }
+
+        function displayOFACList() {
+            const unListContainer = document.getElementById('unListContainer');
+            const unListElement = document.getElementById('unList');
+            const unListCount = document.getElementById('unListCount');
+            const unListInfo = document.getElementById('unListInfo');
+            
+            // Update title
+            document.querySelector('#unListContainer h2').textContent = 'OFAC sankciju saraksts';
+            
+            unListElement.innerHTML = '';
+            
+            // Calculate pagination
+            const totalPages = Math.ceil(ofacList.length / unListPerPage);
+            const startIndex = (currentUNListPage - 1) * unListPerPage;
+            const endIndex = Math.min(startIndex + unListPerPage, ofacList.length);
+            const pageResults = ofacList.slice(startIndex, endIndex);
+            
+            // Update info
+            unListInfo.textContent = `Rāda ${startIndex + 1}-${endIndex} no ${ofacList.length} ierakstiem`;
+            unListCount.textContent = ofacList.length;
+            
+            pageResults.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                const globalIndex = startIndex + index;
+                
+                let content = `
+                    <td>${globalIndex + 1}</td>
+                    <td><strong>${item.name}</strong></td>
+                    <td>${item.type === 'person' ? 'Persona' : 'Organizācija'}</td>
+                    <td>${item.addresses && item.addresses.length > 0 ? item.addresses.join('<br>') : '-'}</td>
+                    <td>${item.programs && item.programs.length > 0 ? item.programs.join(', ') : ''}</td>
+                `;
+                
+                tr.innerHTML = content;
+                unListElement.appendChild(tr);
+            });
+            
+            updateUNListPaginationControls(ofacList.length);
+            unListContainer.style.display = 'block';
+        }
 
         // Debounce function for OFAC search
         function debounce(func, wait) {
