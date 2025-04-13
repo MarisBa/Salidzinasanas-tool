@@ -1299,7 +1299,7 @@
                 <!-- UN list container -->
                 <div class="card" id="unListContainer" style="display:none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h2>ANO sankciju saraksts <span class="badge" id="unListCount">0</span></h2>
+                        <h2>OFAC sankciju saraksts <span class="badge" id="unListCount">0</span></h2>
                         <div>
                             <button class="btn btn-outline" onclick="hideUNList()">Aizvērt</button>
                         </div>
@@ -1315,11 +1315,11 @@
                                     <th>Vārds</th>
                                     <th>Tips</th>
                                     <th>Adreses</th>
-                                    <th>Dzimšanas dati</th>
+                                    <th>Programmas</th>
                                 </tr>
                             </thead>
                             <tbody id="unList">
-                                <!-- UN list data will be inserted here -->
+                                <!-- Data will be inserted here -->
                             </tbody>
                         </table>
                     </div>
@@ -2673,22 +2673,32 @@ function loadCachedUKData() {
             }
         }
         
-        function changeUNListPage(direction) {
-            const newPage = currentUNListPage + direction;
-            const totalPages = Math.ceil(unList.length / unListPerPage);
-            
-            if (newPage > 0 && newPage <= totalPages) {
-                currentUNListPage = newPage;
-                displayUNList(unList);
+            function changeUNListPage(direction) {
+                const newPage = currentUNListPage + direction;
+                const totalPages = Math.ceil(unList.length / unListPerPage);
+                
+                if (newPage > 0 && newPage <= totalPages) {
+                    currentUNListPage = newPage;
+                    if (document.querySelector('#unListContainer h2').textContent.includes('OFAC')) {
+                        // If showing OFAC list, we need to fetch fresh data
+                        showOFACList();
+                    } else {
+                        // Otherwise show the cached UN list
+                        displayUNList(unList);
+                    }
+                }
             }
-        }
         
-        function goToUNListPage(page) {
+            function goToUNListPage(page) {
             const totalPages = Math.ceil(unList.length / unListPerPage);
             
             if (page > 0 && page <= totalPages) {
                 currentUNListPage = page;
-                displayUNList(unList);
+                if (document.querySelector('#unListContainer h2').textContent.includes('OFAC')) {
+                    showOFACList();
+                } else {
+                    displayUNList(unList);
+                }
             }
         }
     
@@ -3560,56 +3570,120 @@ function loadCachedUKData() {
         });
 
 
-        function showOFACList() {
-            if (ofacList.length === 0) {
-                updateStatus('OFAC saraksts vēl nav ielādēts. Lūdzu, uzgaidiet...', 'warning');
-                fetchOFACList().then(() => {
-                    displayOFACList();
-                });
-            } else {
-                displayOFACList();
+
+        async function showOFACList() {
+            try {
+                // First make sure the container exists
+                const unListContainer = document.getElementById('unListContainer');
+                if (!unListContainer) {
+                    throw new Error('OFAC list container not found');
+                }
+                unListContainer.style.display = 'block';
+
+                // Get all required elements with null checks
+                const getElement = (id) => {
+                    const el = document.getElementById(id);
+                    if (!el) console.warn(`Element with ID ${id} not found`);
+                    return el;
+                };
+
+                const elements = {
+                    unList: getElement('unList'),
+                    unListCount: getElement('unListCount'),
+                    unListInfo: getElement('unListInfo'),
+                    status: getElement('status'),
+                    title: unListContainer.querySelector('h2')
+                };
+
+                // Verify critical elements exist
+                if (!elements.unList || !elements.title) {
+                    throw new Error('Critical elements missing for OFAC list display');
+                }
+
+                // Show loading state
+                if (elements.status) {
+                    elements.status.innerHTML = '<p>Notiek OFAC saraksta ielāde...</p>';
+                    elements.status.className = 'status status-warning';
+                }
+
+                elements.unList.innerHTML = '<tr><td colspan="5"><span class="loading"></span> Notiek datu ielāde...</td></tr>';
+                
+                // Fetch data
+                const ofacData = await fetchOFACDataForCompare();
+                
+                if (!ofacData?.length) {
+                    throw new Error('No data received from OFAC API');
+                }
+                
+                // Update UI
+                elements.title.textContent = 'OFAC sankciju saraksts';
+                currentUNListPage = 1;
+                
+                // Display data
+                displayOFACListData(ofacData, elements);
+                
+                if (elements.status) {
+                    elements.status.innerHTML = `<p>OFAC saraksts ielādēts (${ofacData.length} ieraksti)</p>`;
+                    elements.status.className = 'status status-success';
+                }
+
+            } catch (error) {
+                console.error('OFAC list error:', error);
+                const status = document.getElementById('status');
+                if (status) {
+                    status.innerHTML = `<p>Kļūda: ${error.message}</p>`;
+                    status.className = 'status status-error';
+                }
+                
+                const unList = document.getElementById('unList');
+                if (unList) {
+                    unList.innerHTML = '<tr><td colspan="5">Datu ielāde neveiksmīga</td></tr>';
+                }
             }
         }
 
-        function displayOFACList() {
-            const unListContainer = document.getElementById('unListContainer');
-            const unListElement = document.getElementById('unList');
-            const unListCount = document.getElementById('unListCount');
-            const unListInfo = document.getElementById('unListInfo');
+        function displayOFACListData(data, elements) {
+            if (!elements.unList) return;
+
+            // Clear and populate table
+            elements.unList.innerHTML = '';
             
-            // Update title
-            document.querySelector('#unListContainer h2').textContent = 'OFAC sankciju saraksts';
+            const startIdx = (currentUNListPage - 1) * unListPerPage;
+            const endIdx = Math.min(startIdx + unListPerPage, data.length);
             
-            unListElement.innerHTML = '';
+            // Update counters if elements exist
+            if (elements.unListInfo) {
+                elements.unListInfo.textContent = `Rāda ${startIdx+1}-${endIdx} no ${data.length}`;
+            }
+            if (elements.unListCount) {
+                elements.unListCount.textContent = data.length;
+            }
             
-            // Calculate pagination
-            const totalPages = Math.ceil(ofacList.length / unListPerPage);
-            const startIndex = (currentUNListPage - 1) * unListPerPage;
-            const endIndex = Math.min(startIndex + unListPerPage, ofacList.length);
-            const pageResults = ofacList.slice(startIndex, endIndex);
-            
-            // Update info
-            unListInfo.textContent = `Rāda ${startIndex + 1}-${endIndex} no ${ofacList.length} ierakstiem`;
-            unListCount.textContent = ofacList.length;
-            
-            pageResults.forEach((item, index) => {
-                const tr = document.createElement('tr');
-                const globalIndex = startIndex + index;
-                
-                let content = `
-                    <td>${globalIndex + 1}</td>
-                    <td><strong>${item.name}</strong></td>
-                    <td>${item.type === 'person' ? 'Persona' : 'Organizācija'}</td>
-                    <td>${item.addresses && item.addresses.length > 0 ? item.addresses.join('<br>') : '-'}</td>
-                    <td>${item.programs && item.programs.length > 0 ? item.programs.join(', ') : ''}</td>
+            // Add rows
+            data.slice(startIdx, endIdx).forEach((item, i) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${startIdx + i + 1}</td>
+                    <td>${item.name || 'N/A'}</td>
+                    <td>${item.type || 'N/A'}</td>
+                    <td>${item.addresses || 'N/A'}</td>
+                    <td>${item.programs || 'N/A'}</td>
                 `;
-                
-                tr.innerHTML = content;
-                unListElement.appendChild(tr);
+                elements.unList.appendChild(row);
             });
             
-            updateUNListPaginationControls(ofacList.length);
-            unListContainer.style.display = 'block';
+            updateUNListPaginationControls(data.length);
+        }
+        async function fetchOFACDataForCompare() {
+            try {
+                const response = await fetch('/api/sanctions/list');
+                if (!response.ok) throw new Error('Failed to fetch OFAC data');
+                const { data } = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching OFAC data:', error);
+                return [];
+            }
         }
 
         // Debounce function for OFAC search
