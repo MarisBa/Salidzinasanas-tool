@@ -1208,6 +1208,7 @@
                         </button>
                         <button class="btn btn-outline" onclick="showUNList()">Parādīt ANO sarakstu</button>
                         <button class="btn btn-outline" onclick="showOFACList()">Parādīt OFAC sarakstu</button>
+                        <button class="btn btn-outline" onclick="showEUList()">Parādīt ES sarakstu</button>
                         <button class="btn btn-outline" onclick="refreshUNList()">
                             <span id="refreshSpinner" class="loading" style="display: none;"></span>
                             Atjaunot ANO sarakstu
@@ -1223,7 +1224,7 @@
                                 <span class="sanction-list-label">ANO sankciju saraksts</span>
                             </label>
                             <label class="sanction-list-item">
-                                <input type="checkbox" id="euListCheckbox">
+                                <input type="checkbox" id="euListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">Eiropas Savienības sankciju saraksts</span>
                             </label>
@@ -1297,9 +1298,10 @@
                 </div>
 
                 <!-- UN list container -->
+                                <!-- Same container as OFAC/UN list - they share the same container -->
                 <div class="card" id="unListContainer" style="display:none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h2>OFAC sankciju saraksts <span class="badge" id="unListCount">0</span></h2>
+                        <h2>ES sankciju saraksts <span class="badge" id="unListCount">0</span></h2>
                         <div>
                             <button class="btn btn-outline" onclick="hideUNList()">Aizvērt</button>
                         </div>
@@ -1314,8 +1316,8 @@
                                     <th>Nr.</th>
                                     <th>Vārds</th>
                                     <th>Tips</th>
-                                    <th>Adreses</th>
-                                    <th>Programmas</th>
+                                    <th>Regulējums</th>
+                                    <th>Pamatojums</th>
                                 </tr>
                             </thead>
                             <tbody id="unList">
@@ -1438,11 +1440,11 @@
                 document.getElementById('euListCheckbox').addEventListener('change', function() {
                     activeLists.eu = this.checked;
                     if (this.checked && euList.length === 0) {
-                        fetchEUList();
-                    } else {
-                        loadSanctionsDataForSearch();
+                        fetchEUListForCompare();
                     }
+                    updateActiveListsStatus();
                 });
+
 
                 document.getElementById('ofacListCheckbox').addEventListener('change', function() {
                     activeLists.ofac = this.checked;
@@ -2086,15 +2088,113 @@ function loadCachedUKData() {
                 return result;
             }
         
-            function showEUList() {
-                if (euList.length === 0) {
-                    updateStatus('ES saraksts vēl nav ielādēts. Lūdzu, uzgaidiet...', 'warning');
-                    fetchEUList().then(() => {
-                        displayEUList();
-                    });
-                } else {
-                    displayEUList();
+            async function showEUList() {
+                try {
+                    // Ensure container exists
+                    const unListContainer = document.getElementById('unListContainer');
+                    if (!unListContainer) {
+                        throw new Error('EU list container not found');
+                    }
+                    unListContainer.style.display = 'block';
+
+                    // Get elements with safe fallbacks
+                    const elements = {
+                        unList: document.getElementById('unList'),
+                        unListCount: document.getElementById('unListCount'),
+                        unListInfo: document.getElementById('unListInfo'),
+                        status: document.getElementById('status'),
+                        title: unListContainer.querySelector('h2')
+                    };
+
+                    // Verify critical elements
+                    if (!elements.unList || !elements.title) {
+                        throw new Error('Critical elements missing for EU list display');
+                    }
+
+                    // Show loading state
+                    if (elements.status) {
+                        elements.status.innerHTML = '<p>Notiek ES saraksta ielāde...</p>';
+                        elements.status.className = 'status status-warning';
+                    }
+
+                    elements.unList.innerHTML = '<tr><td colspan="5"><span class="loading"></span> Notiek datu ielāde...</td></tr>';
+                    
+                    // Fetch EU data
+                    const euData = await fetchEUDataForCompare();
+                    
+                    if (!euData?.length) {
+                        throw new Error('No data received from EU API');
+                    }
+                    
+                    // Update UI
+                    elements.title.textContent = 'ES sankciju saraksts';
+                    currentUNListPage = 1;
+                    
+                    // Display data
+                    displayEUListData(euData, elements);
+                    
+                    if (elements.status) {
+                        elements.status.innerHTML = `<p>ES saraksts ielādēts (${euData.length} ieraksti)</p>`;
+                        elements.status.className = 'status status-success';
+                    }
+
+                } catch (error) {
+                    console.error('EU list error:', error);
+                    const status = document.getElementById('status');
+                    if (status) {
+                        status.innerHTML = `<p>Kļūda: ${error.message}</p>`;
+                        status.className = 'status status-error';
+                    }
+                    
+                    const unList = document.getElementById('unList');
+                    if (unList) {
+                        unList.innerHTML = '<tr><td colspan="5">Datu ielāde neveiksmīga</td></tr>';
+                    }
                 }
+            }
+            async function fetchEUDataForCompare() {
+                try {
+                    const response = await fetch('/api/eu-sanctions/list');
+                    if (!response.ok) throw new Error('Failed to fetch EU data');
+                    const { data } = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error('Error fetching EU data:', error);
+                    return [];
+                }
+            }
+
+            function displayEUListData(data, elements) {
+                if (!elements.unList) return;
+
+                // Clear and populate table
+                elements.unList.innerHTML = '';
+                
+                const startIdx = (currentUNListPage - 1) * unListPerPage;
+                const endIdx = Math.min(startIdx + unListPerPage, data.length);
+                
+                // Update counters if elements exist
+                if (elements.unListInfo) {
+                    elements.unListInfo.textContent = `Rāda ${startIdx+1}-${endIdx} no ${data.length}`;
+                }
+                if (elements.unListCount) {
+                    elements.unListCount.textContent = data.length;
+                }
+                
+                // Add rows with EU-specific columns
+                data.slice(startIdx, endIdx).forEach((item, i) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${startIdx + i + 1}</td>
+                        <td>${item.name || item.fullName || 'N/A'}</td>
+                        <td>${item.type === 'P' ? 'Persona' : 'Organizācija'}</td>
+                        <td>${item.regulation || 'N/A'}</td>
+                        <td>${item.remark || 'N/A'}</td>
+                    `;
+                    elements.unList.appendChild(row);
+                });
+                
+                updateUNListPaginationControls(data.length);
             }
         
             function displayEUList() {
@@ -2897,6 +2997,32 @@ function loadCachedUKData() {
                 previewTableBody.appendChild(tr);
             }
         }
+
+        async function fetchEUListForCompare() {
+            try {
+                updateStatus('Notiek ES sankciju saraksta lejupielāde...', 'warning');
+                
+                const response = await fetch('/api/eu-sanctions/list');
+                if (!response.ok) throw new Error('Neizdevās iegūt datus');
+                
+                const { data } = await response.json();
+                euList = data.map(item => ({
+                    name: item.name || item.fullName,
+                    type: item.type === 'P' ? 'person' : 'organization',
+                    list: 'EU',
+                    regulation: item.regulation,
+                    remark: item.remark,
+                    // Add other relevant EU-specific fields
+                }));
+                
+                updateStatus(`ES saraksts ielādēts (${euList.length} ieraksti)`, 'success');
+            } catch (error) {
+                console.error('ES datu iegūšanas kļūda:', error);
+                updateStatus(`Kļūda: ${error.message}`, 'error');
+                euList = []; // Reset to empty array on error
+            }
+        }
+
     
         async function compareData() {
             const fileInput = document.getElementById('fileInput');
@@ -2919,41 +3045,28 @@ function loadCachedUKData() {
                 
                 let allMatches = [];
                 let matchedColumns = new Set();
-                
                 selectedColumns.forEach(index => {
-                    const columnData = userFileData.map(row => row[index]);
-                    const matches = columnData.filter(name => {
-                        if (!name) return false;
-                        
-                        // Check against all active lists
-                        let isMatch = false;
-                        
-                        if (activeLists.un && unList.some(item => 
-                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
-                        )) {
-                            isMatch = true;
-                        }
-                        
-                        if (activeLists.eu && euList.some(item => 
-                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
-                        )) {
-                            isMatch = true;
-                        }
-                        
-                        if (activeLists.uk && ukList.some(item => 
-                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
-                        )) {
-                            isMatch = true;
-                        }
-                        
-                        if (activeLists.ofac && ofacList.some(item => 
-                            item.name && item.name.toLowerCase().includes(name.toLowerCase())
-                        )) {
-                            isMatch = true;
-                        }
-                        
-                        return isMatch;
-                    });
+                const columnData = userFileData.map(row => row[index]);
+                const matches = columnData.filter(name => {
+                    if (!name) return false;
+                    
+                    let isMatch = false;
+                    
+                    // Check against active lists
+                    if (activeLists.un && unList.some(item => matchesName(item.name, name))) {
+                        isMatch = true;
+                    }
+                    
+                    if (activeLists.eu && euList.some(item => matchesName(item.name, name))) {
+                        isMatch = true;
+                    }
+                    
+                    if (activeLists.ofac && ofacList.some(item => matchesName(item.name, name))) {
+                        isMatch = true;
+                    }
+                    
+                    return isMatch;
+                });
                     
                     if (matches.length > 0) {
                         matchedColumns.add(index);
@@ -2981,6 +3094,27 @@ function loadCachedUKData() {
             } finally {
                 document.getElementById('compareSpinner').style.display = 'none';
                 document.getElementById('compareBtn').disabled = false;
+            }
+        }
+
+
+        function updateActiveListsStatus() {
+            const activeCount = Object.values(activeLists).filter(Boolean).length;
+            const statusElement = document.getElementById('status');
+            
+            if (statusElement) {
+                if (activeCount === 0) {
+                    statusElement.innerHTML = '<p>Nav aktīvu sankciju sarakstu. Lūdzu, ieslēdziet vismaz vienu.</p>';
+                    statusElement.className = 'status status-warning';
+                } else {
+                    const activeNames = [];
+                    if (activeLists.un) activeNames.push('ANO');
+                    if (activeLists.eu) activeNames.push('ES');
+                    if (activeLists.ofac) activeNames.push('OFAC');
+                    
+                    statusElement.innerHTML = `<p>Aktīvie saraksti: ${activeNames.join(', ')}</p>`;
+                    statusElement.className = 'status status-success';
+                }
             }
         }
         function displayMatches(matches, matchedColumnsCount) {
