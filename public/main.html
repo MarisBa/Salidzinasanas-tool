@@ -1467,6 +1467,18 @@
                 });
             });
 
+            async function fetchOFACDataForCompare() {
+                try {
+                    const response = await fetch('/api/sanctions/list');
+                    if (!response.ok) throw new Error('Failed to fetch OFAC data');
+                    const { data } = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error('Error fetching OFAC data:', error);
+                    return [];
+                }
+            }
+
 // UK specific functions
 async function testUKConnection() {
     const debugOutput = document.getElementById('debugOutput');
