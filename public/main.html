@@ -1446,10 +1446,12 @@
                 });
 
 
-                document.getElementById('ofacListCheckbox').addEventListener('change', function() {
+                document.getElementById('ofacListCheckbox').addEventListener('change', async function() {
                     activeLists.ofac = this.checked;
                     if (this.checked && ofacList.length === 0) {
-                        fetchOFACList();
+                        // Use the same function as the "Show OFAC" button
+                        ofacList = await fetchOFACDataForCompare();
+                        loadSanctionsDataForSearch();
                     } else {
                         loadSanctionsDataForSearch();
                     }
@@ -3820,17 +3822,7 @@ function loadCachedUKData() {
             
             updateUNListPaginationControls(data.length);
         }
-        async function fetchOFACDataForCompare() {
-            try {
-                const response = await fetch('/api/sanctions/list');
-                if (!response.ok) throw new Error('Failed to fetch OFAC data');
-                const { data } = await response.json();
-                return data;
-            } catch (error) {
-                console.error('Error fetching OFAC data:', error);
-                return [];
-            }
-        }
+        
 
         // Debounce function for OFAC search
         function debounce(func, wait) {
