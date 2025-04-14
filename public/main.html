@@ -2310,7 +2310,7 @@ function loadCachedUKData() {
                     }
                 }, 500);
             }
-        
+
             function displayResults(results) {
                 const resultsContainer = document.getElementById('resultsContainer');
                 const resultsBody = document.getElementById('resultsBody');
@@ -2415,21 +2415,53 @@ function loadCachedUKData() {
             }
         
             function formatAddress(item) {
-                if (item.address) return item.address;
-                if (item.addresses && item.addresses.length > 0) {
-                    return item.addresses.join('<br>');
+                if (!item) return "Nav pieejama";
+                
+                // Handle single string address
+                if (typeof item.address === 'string') {
+                    return item.address;
                 }
+                
+                // Handle array of addresses
+                if (Array.isArray(item.addresses)) {
+                    // Filter out empty/null addresses and join with <br>
+                    return item.addresses
+                        .filter(addr => addr && typeof addr === 'string')
+                        .join('<br>') || "Nav pieejama";
+                }
+                
+                // Handle object with address properties
+                if (item.address && typeof item.address === 'object') {
+                    const parts = [
+                        item.address.street,
+                        item.address.city,
+                        item.address.country
+                    ].filter(Boolean);
+                    return parts.join(', ') || "Nav pieejama";
+                }
+                
                 return "Nav pieejama";
             }
-        
+
+            // More robust date formatting
             function formatDates(item) {
-                if (item.birthDate && item.birthPlace) {
-                    return `${item.birthDate}, ${item.birthPlace}`;
+                if (!item) return "Nav pieejams";
+                
+                const parts = [];
+                
+                if (item.birthDate) {
+                    parts.push(item.birthDate);
                 }
-                if (item.birthDate) return item.birthDate;
-                if (item.birthPlace) return item.birthPlace;
-                if (item.dates) return item.dates;
-                return "Nav pieejams";
+                
+                if (item.birthPlace) {
+                    parts.push(item.birthPlace);
+                }
+                
+                if (item.dates) {
+                    parts.push(item.dates);
+                }
+                
+                return parts.join(', ') || "Nav pieejams";
             }
         
             function highlightMatches(text, searchTerm) {
