@@ -3023,6 +3023,18 @@ function loadCachedUKData() {
             }
         }
 
+        function matchesName(sanctionName, inputName) {
+            if (!sanctionName || !inputName) return false;
+            
+            // Simple case-insensitive comparison
+            return sanctionName.toLowerCase().includes(inputName.toLowerCase());
+            
+            // For more advanced matching, you could:
+            // 1. Normalize both names (remove accents, special chars, etc.)
+            // 2. Implement fuzzy matching
+            // 3. Handle different name formats
+        }
+
     
         async function compareData() {
             const fileInput = document.getElementById('fileInput');
