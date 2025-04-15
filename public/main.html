@@ -1074,39 +1074,133 @@
     color: var(--dark-color);
 }
 
-.export-results-section {
-    margin-top: 30px;
-    padding: 20px;
+/* Export buttons section */
+.export-section {
+    margin-top: 20px;
+    padding: 15px;
     background-color: #f8f9fa;
     border-radius: var(--border-radius);
     border: 1px solid #e0e0e0;
 }
 
-.export-results-section h3 {
+.export-section h3 {
     margin-top: 0;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
     color: var(--primary-color);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
 }
 
 .export-buttons {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
-.export-icon {
-    margin-right: 5px;
-    font-style: normal;
+.export-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background-color: white;
+    color: var(--dark-color);
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 13px;
+    transition: var(--transition);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
+.export-btn:hover {
+    background-color: #f0f7ff;
+    border-color: var(--secondary-color);
+    color: var(--secondary-color);
+    transform: translateY(-1px);
+}
+
+.export-btn .icon {
+    font-size: 14px;
+}
+
+/* Specific button colors */
+.export-btn.csv {
+    border-color: #4CAF50;
+    color: #4CAF50;
+}
+
+.export-btn.excel {
+    border-color: #217346;
+    color: #217346;
+}
+
+.export-btn.pdf {
+    border-color: #F44336;
+    color: #F44336;
+}
+
+.export-btn.json {
+    border-color: #FF9800;
+    color: #FF9800;
+}
+
+.export-btn.print {
+    border-color: #607D8B;
+    color: #607D8B;
+}
+
+/* Responsive adjustments */
 @media (max-width: 768px) {
     .export-buttons {
-        flex-direction: column;
+        gap: 6px;
     }
     
-    .export-buttons .btn {
-        width: 100%;
+    .export-btn {
+        padding: 5px 10px;
+        font-size: 12px;
     }
+    
+    .export-btn .icon {
+        font-size: 12px;
+    }
+}
+
+.info-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 8px;
+    color: var(--secondary-color);
+    opacity: 0.7;
+    transition: var(--transition);
+}
+
+.info-btn:hover {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.sanction-list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    transition: var(--transition);
+    cursor: pointer;
+    border: 1px solid #e0e0e0;
+    gap: 10px;
+}
+
+.sanction-list-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: var(--secondary-color);
 }
     </style>
 </head>
@@ -1253,23 +1347,7 @@
                         </button>
                     </div>
 
-                    <div class="export-results-section">
-                        <h3>Eksportēt rezultātus</h3>
-                        <div class="export-buttons">
-                            <button class="btn btn-outline" onclick="exportComparisonResults('csv')">
-                                <i class="export-icon">📊</i> Eksportēt uz CSV
-                            </button>
-                            <button class="btn btn-outline" onclick="exportComparisonResults('excel')">
-                                <i class="export-icon">📈</i> Eksportēt uz Excel
-                            </button>
-                            <button class="btn btn-outline" onclick="exportComparisonResults('pdf')">
-                                <i class="export-icon">📄</i> Eksportēt uz PDF
-                            </button>
-                            <button class="btn btn-outline" onclick="exportComparisonResults('json')">
-                                <i class="export-icon">🔖</i> Eksportēt uz JSON
-                            </button>
-                        </div>
-                    </div>
+                    
 
                     <div class="sanction-lists-container">
                         <div class="sanction-lists-title">Izvēlieties sankciju sarakstus:</div>
@@ -1278,17 +1356,21 @@
                                 <input type="checkbox" id="unListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">ANO sankciju saraksts</span>
+                                <button class="info-btn" onclick="window.open('https://www.un.org/securitycouncil/content/un-sc-consolidated-list', '_blank')">ℹ️</button>
                             </label>
                             <label class="sanction-list-item">
                                 <input type="checkbox" id="euListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">Eiropas Savienības sankciju saraksts</span>
+                                <button class="info-btn" onclick="window.open('https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions?locale=en', '_blank')">ℹ️</button>
                             </label>
                             <label class="sanction-list-item">
                                 <input type="checkbox" id="ofacListCheckbox">
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">OFAC sankciju saraksts</span>
+                                <button class="info-btn" onclick="window.open('https://www.treasury.gov/ofac/downloads/sdnlist.pdf', '_blank')">ℹ️</button>
                             </label>
+                        
                         </div>
                     </div>
 
@@ -1305,6 +1387,34 @@
                     </div>
                 </div>
 
+
+                <div class="export-section">
+                    <h3>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Eksportēt rezultātus
+                    </h3>
+                    <div class="export-buttons">
+                        <button class="export-btn csv" onclick="exportComparisonResults('csv')">
+                            <span class="icon">📊</span> CSV
+                        </button>
+                        <button class="export-btn excel" onclick="exportComparisonResults('excel')">
+                            <span class="icon">📈</span> Excel
+                        </button>
+                        <button class="export-btn pdf" onclick="exportComparisonResults('pdf')">
+                            <span class="icon">📄</span> PDF
+                        </button>
+                        <button class="export-btn json" onclick="exportComparisonResults('json')">
+                            <span class="icon">🔖</span> JSON
+                        </button>
+                        <button class="export-btn print" onclick="printResults()">
+                            <span class="icon">🖨️</span> Drukāt
+                        </button>
+                    </div>
+                </div>
             
                 <!-- Compare results section -->
                 <div class="results-container" id="compareResults" style="display:none;">
@@ -3039,6 +3149,7 @@ function loadCachedUKData() {
                         <input type="checkbox" id="${checkboxId}" value="${index}" 
                             onchange="updateColumnSelection(${index}, this.checked)">
                         <label for="${checkboxId}">${header}</label>
+                        <button class="info-btn" onclick="showColumnInfo('${header}')">ℹ️</button>
                     `;
                     columnCheckboxes.appendChild(checkboxItem);
                 });
@@ -3050,6 +3161,10 @@ function loadCachedUKData() {
                 columnSelector.style.display = 'none';
                 updateStatus('Failā nav atrastas kolonnas', 'error');
             }
+        }
+
+        function showColumnInfo(columnName) {
+            alert(`Informācija par kolonnu: ${columnName}\n\nŠī ir kolonna no jūsu augšupielādētā faila. Atlasiet to, ja tā satur personas vai organizāciju vārdus, kurus vēlaties salīdzināt ar sankciju sarakstiem.`);
         }
 
         function updateColumnSelection(columnIndex, isChecked) {
