@@ -1371,6 +1371,13 @@
                                 <button class="info-btn" onclick="window.open('https://www.treasury.gov/ofac/downloads/sdnlist.pdf', '_blank')">ℹ️</button>
                             </label>
                         
+
+                            <label class="sanction-list-item">
+                                <input type="checkbox" id="lvListCheckbox">
+                                <span class="custom-checkbox"></span>
+                                <span class="sanction-list-label">Latvijas sankciju saraksts</span>
+                                <button class="info-btn" onclick="window.open('https://sankcijas.fid.gov.lv/files/LV_national_v2.xml', '_blank')">ℹ️</button>
+                            </label>
                         </div>
                     </div>
 
@@ -1401,14 +1408,8 @@
                         <button class="export-btn csv" onclick="exportComparisonResults('csv')">
                             <span class="icon">📊</span> CSV
                         </button>
-                        <button class="export-btn excel" onclick="exportComparisonResults('excel')">
-                            <span class="icon">📈</span> Excel
-                        </button>
                         <button class="export-btn pdf" onclick="exportComparisonResults('pdf')">
                             <span class="icon">📄</span> PDF
-                        </button>
-                        <button class="export-btn json" onclick="exportComparisonResults('json')">
-                            <span class="icon">🔖</span> JSON
                         </button>
                         <button class="export-btn print" onclick="printResults()">
                             <span class="icon">🖨️</span> Drukāt
@@ -1577,12 +1578,14 @@
             let currentUNListPage = 1;
             const resultsPerPage = 20;
             const unListPerPage = 15;
+            let lvList = []
             let activeLists = {
                 un: true,
                 eu: false,
                 us: false,
                 uk: false,
-                ofac: false
+                ofac: false,
+                lv: false  // Add Latvian list
             };
             let ukList = [];
             let euSanctionsData = [];
@@ -1630,6 +1633,14 @@
                     } else {
                         loadSanctionsDataForSearch();
                     }
+                });
+
+                document.getElementById('lvListCheckbox').addEventListener('change', function() {
+                    activeLists.lv = this.checked;
+                    if (this.checked && lvList.length === 0) {
+                        fetchLVList();
+                    }
+                    updateActiveListsStatus();
                 });
             });
 
