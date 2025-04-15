@@ -1073,6 +1073,41 @@
     padding: 30px;
     color: var(--dark-color);
 }
+
+.export-results-section {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: var(--border-radius);
+    border: 1px solid #e0e0e0;
+}
+
+.export-results-section h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+}
+
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.export-icon {
+    margin-right: 5px;
+    font-style: normal;
+}
+
+@media (max-width: 768px) {
+    .export-buttons {
+        flex-direction: column;
+    }
+    
+    .export-buttons .btn {
+        width: 100%;
+    }
+}
     </style>
 </head>
 <body>
@@ -1206,6 +1241,9 @@
                             <span id="compareSpinner" class="loading" style="display: none;"></span>
                             Salīdzināt
                         </button>
+
+                        <!-- Add this after the matches section -->
+                        
                         <button class="btn btn-outline" onclick="showUNList()">Parādīt ANO sarakstu</button>
                         <button class="btn btn-outline" onclick="showOFACList()">Parādīt OFAC sarakstu</button>
                         <button class="btn btn-outline" onclick="showEUList()">Parādīt ES sarakstu</button>
@@ -1213,6 +1251,24 @@
                             <span id="refreshSpinner" class="loading" style="display: none;"></span>
                             Atjaunot ANO sarakstu
                         </button>
+                    </div>
+
+                    <div class="export-results-section">
+                        <h3>Eksportēt rezultātus</h3>
+                        <div class="export-buttons">
+                            <button class="btn btn-outline" onclick="exportComparisonResults('csv')">
+                                <i class="export-icon">📊</i> Eksportēt uz CSV
+                            </button>
+                            <button class="btn btn-outline" onclick="exportComparisonResults('excel')">
+                                <i class="export-icon">📈</i> Eksportēt uz Excel
+                            </button>
+                            <button class="btn btn-outline" onclick="exportComparisonResults('pdf')">
+                                <i class="export-icon">📄</i> Eksportēt uz PDF
+                            </button>
+                            <button class="btn btn-outline" onclick="exportComparisonResults('json')">
+                                <i class="export-icon">🔖</i> Eksportēt uz JSON
+                            </button>
+                        </div>
                     </div>
 
                     <div class="sanction-lists-container">
@@ -4108,6 +4164,204 @@ function loadCachedUKData() {
                 initEUTab();
             }
         };
+
+
+        // Export comparison results in different formats
+        function exportComparisonResults(format) {
+            const matches = [];
+            const matchItems = document.querySelectorAll('.match-item');
+            
+            if (matchItems.length === 0) {
+                alert('Nav datu eksportēšanai');
+                return;
+            }
+            
+            // Collect all match data
+            matchItems.forEach(item => {
+                matches.push({
+                    name: item.querySelector('.match-title').textContent,
+                    column: item.querySelector('.match-column').textContent.replace('Atrasta kolonnā(s): ', ''),
+                    source: item.querySelector('.match-source').textContent,
+                    description: item.querySelector('.match-description').textContent
+                });
+            });
+            
+            // Get summary data
+            const summary = {
+                totalMatches: document.getElementById('totalMatches').textContent,
+                uniqueMatches: document.getElementById('uniqueMatches').textContent,
+                matchedColumns: document.getElementById('matchedColumns').textContent,
+                timestamp: new Date().toLocaleString()
+            };
+            
+            switch (format) {
+                case 'csv':
+                    exportToCSV(matches, summary);
+                    break;
+                case 'excel':
+                    exportToExcel(matches, summary);
+                    break;
+                case 'pdf':
+                    exportToPDF(matches, summary);
+                    break;
+                case 'json':
+                    exportToJSON(matches, summary);
+                    break;
+                default:
+                    alert('Nepareizs eksporta formāts');
+            }
+        }
+
+        function exportToCSV(matches, summary) {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            
+            // Add summary
+            csvContent += "Kopsavilkums\n";
+            csvContent += `Kopējās sakritības,${summary.totalMatches}\n`;
+            csvContent += `Unikālās sakritības,${summary.uniqueMatches}\n`;
+            csvContent += `Kolonna(s) ar sakritībām,${summary.matchedColumns}\n`;
+            csvContent += `Eksporta datums,${summary.timestamp}\n\n`;
+            
+            // Add header
+            csvContent += "Vārds,Kolonnas,Saraksti,Apraksts\n";
+            
+            // Add matches
+            matches.forEach(match => {
+                csvContent += `"${match.name}","${match.column}","${match.source}","${match.description}"\n`;
+            });
+            
+            // Create download link
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `sankciju_sakritibas_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportToExcel(matches, summary) {
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Add summary sheet
+            const summaryData = [
+                ["Kopsavilkums"],
+                ["Kopējās sakritības", summary.totalMatches],
+                ["Unikālās sakritības", summary.uniqueMatches],
+                ["Kolonna(s) ar sakritībām", summary.matchedColumns],
+                ["Eksporta datums", summary.timestamp]
+            ];
+            const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, summaryWS, "Kopsavilkums");
+            
+            // Add matches sheet
+            const matchesData = matches.map(match => [
+                match.name,
+                match.column,
+                match.source,
+                match.description
+            ]);
+            matchesData.unshift(["Vārds", "Kolonnas", "Saraksti", "Apraksts"]); // Add header
+            const matchesWS = XLSX.utils.aoa_to_sheet(matchesData);
+            XLSX.utils.book_append_sheet(wb, matchesWS, "Sakritības");
+            
+            // Export file
+            XLSX.writeFile(wb, `sankciju_sakritibas_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        function exportToJSON(matches, summary) {
+            const data = {
+                metadata: {
+                    exportedAt: new Date().toISOString(),
+                    summary: {
+                        totalMatches: summary.totalMatches,
+                        uniqueMatches: summary.uniqueMatches,
+                        matchedColumns: summary.matchedColumns
+                    }
+                },
+                matches: matches
+            };
+            
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `sankciju_sakritibas_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportToPDF(matches, summary) {
+            // For PDF export, we'll use the browser's print functionality
+            // In a real implementation, you might use a library like jsPDF or pdfmake
+            
+            // Create a printable version of the results
+            const printWindow = window.open('', '', 'width=800,height=600');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Sankciju sakritību atskaite</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        h1 { color: #2c3e50; }
+                        .summary { margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #2c3e50; color: white; }
+                        tr:nth-child(even) { background-color: #f2f2f2; }
+                        .footer { margin-top: 30px; font-size: 0.8em; color: #666; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Sankciju sakritību atskaite</h1>
+                    <div class="summary">
+                        <h2>Kopsavilkums</h2>
+                        <p><strong>Kopējās sakritības:</strong> ${summary.totalMatches}</p>
+                        <p><strong>Unikālās sakritības:</strong> ${summary.uniqueMatches}</p>
+                        <p><strong>Kolonna(s) ar sakritībām:</strong> ${summary.matchedColumns}</p>
+                        <p><strong>Eksporta datums:</strong> ${summary.timestamp}</p>
+                    </div>
+                    
+                    <h2>Sakritības</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nr.</th>
+                                <th>Vārds</th>
+                                <th>Kolonnas</th>
+                                <th>Saraksti</th>
+                                <th>Apraksts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${matches.map((match, index) => `
+                                <tr>
+                                    <td>${index + 1}</td>
+                                    <td>${match.name}</td>
+                                    <td>${match.column}</td>
+                                    <td>${match.source}</td>
+                                    <td>${match.description}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    
+                    <div class="footer">
+                        Automātiski ģenerēta atskaite no sankciju salīdzināšanas rīka
+                    </div>
+                </body>
+                </html>
+            `);
+            
+            printWindow.document.close();
+            setTimeout(() => {
+                printWindow.print();
+            }, 500);
+        }
     </script>
 </body>
 </html>
