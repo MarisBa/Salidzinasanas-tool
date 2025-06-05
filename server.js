@@ -8,51 +8,40 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const fs = require('fs');
 const { promisify } = require('util');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-const writeFile = promisify(fs.writeFile);
-const readFile = promisify(fs.readFile);
 const iconv = require('iconv-lite');
 const cheerio = require('cheerio');
 
-// Rate limiting
+// Initialize Express app
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Promisify file operations
+const writeFile = promisify(fs.writeFile);
+const readFile = promisify(fs.readFile);
+
+// Configure rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: 'Too many requests, please try again later'
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Route for your main page
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'main.html'));
-});
-
-// Add your OFAC API routes here...
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-// Middleware
+// Middleware setup
 app.use(cors());
 app.use(express.json());
 app.use(limiter);
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// OFAC XML file URL
+// API endpoints
 const OFAC_XML_URL = 'https://www.treasury.gov/ofac/downloads/sdn.xml';
-const CACHE_FILE = path.join(__dirname, 'ofac-cache.json');
-
-
 const EU_XML_URL = 'https://sankcijas.fid.gov.lv/files/xmlFullSanctionsList_1_1.xml';
-const EU_CACHE_FILE = path.join(__dirname, 'eu-cache.json');
 
+// Use /tmp directory for cache files (required for Render)
+const CACHE_FILE = '/tmp/ofac-cache.json';
+const EU_CACHE_FILE = '/tmp/eu-cache.json';
 
-// Cache for storing parsed data
+// Cache structures
 let sanctionsCache = {
   data: [],
   lastUpdated: null,
@@ -65,30 +54,70 @@ let euSanctionsCache = {
   count: 0
 };
 
-// Function to save cache to file
-async function saveCacheToFile() {
-  try {
-    await writeFile(CACHE_FILE, JSON.stringify(sanctionsCache, null, 2));
-    console.log('Cache saved to file');
-  } catch (err) {
-    console.error('Error saving cache to file:', err);
+// Ensure /tmp directory exists
+function ensureTempDir() {
+  if (!fs.existsSync('/tmp')) {
+    fs.mkdirSync('/tmp');
+    console.log('Created /tmp directory');
   }
 }
 
-// Function to load cache from file
+// Cache file operations
+async function saveCacheToFile() {
+  try {
+    ensureTempDir();
+    await writeFile(CACHE_FILE, JSON.stringify(sanctionsCache, null, 2));
+    console.log('OFAC cache saved to file');
+  } catch (err) {
+    console.error('Error saving OFAC cache:', err);
+  }
+}
+
 async function loadCacheFromFile() {
   try {
-    const data = await readFile(CACHE_FILE, 'utf8');
-    sanctionsCache = JSON.parse(data);
-    console.log('Cache loaded from file');
-    return true;
+    ensureTempDir();
+    if (fs.existsSync(CACHE_FILE)) {
+      const data = await readFile(CACHE_FILE, 'utf8');
+      sanctionsCache = JSON.parse(data);
+      console.log('OFAC cache loaded from file');
+      return true;
+    }
+    console.log('No OFAC cache file found');
+    return false;
   } catch (err) {
-    console.log('No cache file found or error reading it');
+    console.error('Error loading OFAC cache:', err);
     return false;
   }
 }
 
-// Function to fetch and parse OFAC data
+async function saveEUCacheToFile() {
+  try {
+    ensureTempDir();
+    await writeFile(EU_CACHE_FILE, JSON.stringify(euSanctionsCache, null, 2));
+    console.log('EU cache saved to file');
+  } catch (err) {
+    console.error('Error saving EU cache:', err);
+  }
+}
+
+async function loadEUCacheFromFile() {
+  try {
+    ensureTempDir();
+    if (fs.existsSync(EU_CACHE_FILE)) {
+      const data = await readFile(EU_CACHE_FILE, 'utf8');
+      euSanctionsCache = JSON.parse(data);
+      console.log('EU cache loaded from file');
+      return true;
+    }
+    console.log('No EU cache file found');
+    return false;
+  } catch (err) {
+    console.error('Error loading EU cache:', err);
+    return false;
+  }
+}
+
+// Data fetching functions
 async function fetchOFACData() {
   try {
     console.log('Fetching latest OFAC data...');
@@ -97,14 +126,10 @@ async function fetchOFACData() {
       responseType: 'text'
     });
 
-    // Parse XML to JSON
     const parser = new xml2js.Parser({ explicitArray: false });
     const result = await parser.parseStringPromise(response.data);
-    
-    // Extract sanction entries
     const entries = result.sdnList.sdnEntry || [];
-    
-    // Transform to simpler format
+
     const simplifiedEntries = entries.map(entry => ({
       uid: entry.uid,
       name: `${entry.firstName || ''} ${entry.lastName || ''}`.trim() || entry.sdnType,
@@ -133,7 +158,7 @@ async function fetchOFACData() {
     };
 
     await saveCacheToFile();
-    console.log(`Fetched ${simplifiedEntries.length} entries`);
+    console.log(`Fetched ${simplifiedEntries.length} OFAC entries`);
     return simplifiedEntries;
   } catch (error) {
     console.error('Error fetching OFAC data:', error.message);
@@ -143,17 +168,13 @@ async function fetchOFACData() {
 
 async function fetchEUSanctionsData() {
   try {
-    console.log('Fetching latest EU sanctions data from:', EU_XML_URL);
-    
+    console.log('Fetching EU sanctions data...');
     const response = await axios.get(EU_XML_URL, {
       responseType: 'arraybuffer',
       timeout: 30000
     });
 
-    // Decode the response using iconv-lite
     const xmlData = iconv.decode(response.data, 'win1257');
-    
-    // Use cheerio to parse the XML
     const $ = cheerio.load(xmlData, { 
       xmlMode: true,
       decodeEntities: false,
@@ -164,7 +185,6 @@ async function fetchEUSanctionsData() {
     
     $('sanctionEntity').each((i, el) => {
       const $el = $(el);
-      
       const entry = {
         id: $el.attr('logicalId') || 'N/A',
         euReferenceNumber: $el.attr('euReferenceNumber') || 'N/A',
@@ -195,7 +215,7 @@ async function fetchEUSanctionsData() {
       count: entries.length
     };
 
-    await writeFile(EU_CACHE_FILE, JSON.stringify(euSanctionsCache, null, 2));
+    await saveEUCacheToFile();
     console.log(`Fetched ${entries.length} EU entries`);
     return entries;
   } catch (error) {
@@ -203,10 +223,14 @@ async function fetchEUSanctionsData() {
     throw error;
   }
 }
-// API Endpoints
+
+// API Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'main.html'));
+});
+
 app.get('/api/sanctions/list', async (req, res) => {
   try {
-    // Check if force refresh is requested
     const forceRefresh = req.query.force === 'true';
     
     if (!forceRefresh && sanctionsCache.data.length > 0) {
@@ -219,7 +243,6 @@ app.get('/api/sanctions/list', async (req, res) => {
       });
     }
 
-    // Fetch fresh data
     const data = await fetchOFACData();
     res.json({
       success: true,
@@ -231,7 +254,6 @@ app.get('/api/sanctions/list', async (req, res) => {
   } catch (error) {
     console.error('List error:', error);
     
-    // Try to return cached data if available
     if (sanctionsCache.data.length > 0) {
       return res.status(200).json({
         success: true,
@@ -279,7 +301,6 @@ app.post('/api/sanctions/search', async (req, res) => {
       count: results.length,
       total: sanctionsCache.count
     });
-    
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({
@@ -298,7 +319,6 @@ app.get('/api/sanctions/test-connection', (req, res) => {
     entryCount: sanctionsCache.count
   });
 });
-
 
 app.post('/api/eu-sanctions/search', async (req, res) => {
   try {
@@ -328,7 +348,6 @@ app.post('/api/eu-sanctions/search', async (req, res) => {
       count: results.length,
       total: euSanctionsCache.count
     });
-    
   } catch (error) {
     console.error('EU Search error:', error);
     res.status(500).json({
@@ -348,10 +367,8 @@ app.get('/api/eu-sanctions/test-connection', (req, res) => {
   });
 });
 
-
 app.get('/api/eu-sanctions/list', async (req, res) => {
   try {
-    // Check if force refresh is requested
     const forceRefresh = req.query.force === 'true';
     
     if (!forceRefresh && euSanctionsCache.data.length > 0) {
@@ -364,7 +381,6 @@ app.get('/api/eu-sanctions/list', async (req, res) => {
       });
     }
 
-    // Fetch fresh data
     const data = await fetchEUSanctionsData();
     res.json({
       success: true,
@@ -376,7 +392,6 @@ app.get('/api/eu-sanctions/list', async (req, res) => {
   } catch (error) {
     console.error('EU List error:', error);
     
-    // Try to return cached data if available
     if (euSanctionsCache.data.length > 0) {
       return res.status(200).json({
         success: true,
@@ -396,40 +411,34 @@ app.get('/api/eu-sanctions/list', async (req, res) => {
     });
   }
 });
-// Start server
+
+// Server initialization
 async function startServer() {
-  // Load cache from file if available
-  await Promise.all([loadCacheFromFile(), loadEUCacheFromFile()]);
-  
-  // Initial data fetch
-  try {
-    await Promise.all([fetchOFACData(), fetchEUSanctionsData()]);
-  } catch (err) {
-    console.error('Initial data fetch failed:', err);
-  }
-  
-  // Start the server
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-  
-  // Refresh data every 6 hours
-  setInterval(fetchOFACData, 6 * 60 * 60 * 1000);
-}
+  console.log('Starting server in directory:', __dirname);
+  console.log('Directory contents:', fs.readdirSync(__dirname));
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
-
-async function loadEUCacheFromFile() {
   try {
-    const data = await readFile(EU_CACHE_FILE, 'utf8');
-    euSanctionsCache = JSON.parse(data);
-    console.log('EU Cache loaded from file');
-    return true;
+    await Promise.all([loadCacheFromFile(), loadEUCacheFromFile()]);
+    console.log('Initial cache loaded');
+    
+    try {
+      await Promise.all([fetchOFACData(), fetchEUSanctionsData()]);
+    } catch (fetchError) {
+      console.error('Initial data fetch failed, using cached data:', fetchError);
+    }
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+
+    // Schedule periodic data refreshes
+    setInterval(fetchOFACData, 6 * 60 * 60 * 1000); // Every 6 hours
+    setInterval(fetchEUSanctionsData, 6 * 60 * 60 * 1000); // Every 6 hours
   } catch (err) {
-    console.log('No EU cache file found or error reading it');
-    return false;
+    console.error('Failed to start server:', err);
+    process.exit(1);
   }
 }
+
+// Start the server
+startServer();
