@@ -1258,8 +1258,10 @@
         <div class="tab-container">
             <div class="tab active" onclick="switchTab('search')">Meklēšana</div>
             <div class="tab" onclick="switchTab('compare')">Salīdzināšana</div>
-            <div class="tab" onclick="switchTab('ofac')">OFAC Sankciju saraksts</div>
-            <div class="tab" onclick="switchTab('eu')">ES Sankciju saraksts</div>
+            <!--
+<div class="tab" onclick="switchTab('ofac')">OFAC Sankciju saraksts</div>
+<div class="tab" onclick="switchTab('eu')">ES Sankciju saraksts</div>
+-->
         </div>
 
         <!-- Search Tab -->
@@ -1387,15 +1389,13 @@
                             Salīdzināt
                         </button>
 
-                        <!-- Add this after the matches section -->
+                        <!-- -->
                         
-                        <button class="btn btn-outline" onclick="showUNList()">Parādīt ANO sarakstu</button>
-                        <button class="btn btn-outline" onclick="showOFACList()">Parādīt OFAC sarakstu</button>
-                        <button class="btn btn-outline" onclick="showEUList()">Parādīt ES sarakstu</button>
-                        <button class="btn btn-outline" onclick="refreshUNList()">
-                            <span id="refreshSpinner" class="loading" style="display: none;"></span>
-                            Atjaunot ANO sarakstu
-                        </button>
+                       <!-- <button class="btn btn-outline" onclick="showUNList()">Parādīt ANO sarakstu</button>-->
+                     <!--   <button class="btn btn-outline" onclick="showOFACList()">Parādīt OFAC sarakstu</button>-->
+                      <!--  <button class="btn btn-outline" onclick="showEUList()">Parādīt ES sarakstu</button>-->
+                        
+                            
                     </div>
 
                     
