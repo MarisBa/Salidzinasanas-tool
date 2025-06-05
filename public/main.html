@@ -1202,12 +1202,57 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border-color: var(--secondary-color);
 }
+
+
+.global-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255,255,255,0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.global-loader.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.loader-content {
+  text-align: center;
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>ANO Sankciju sarakstu analīze un salīdzināšanaTest</h1>
+            <h1>ANO Sankciju sarakstu analīze un salīdzināšana</h1>
         </header>
 
         <div class="tab-container">
@@ -1219,6 +1264,12 @@
 
         <!-- Search Tab -->
         <div id="search-tab" class="tab-content active">
+            <div id="globalLoader" class="global-loader">
+            <div class="loader-content">
+                <div class="loading-spinner"></div>
+                <p id="loadingProgressText">Loading sanctions data...</p>
+            </div>
+            </div>
             <div class="card">
                 <div class="search-section">
                     <div class="search-options">
@@ -1365,15 +1416,15 @@
                                 <button class="info-btn" onclick="window.open('https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions?locale=en', '_blank')">ℹ️</button>
                             </label>
                             <label class="sanction-list-item">
-                                <input type="checkbox" id="ofacListCheckbox">
+                                <input type="checkbox" id="ofacListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">OFAC sankciju saraksts</span>
-                                <button class="info-btn" onclick="window.open('https://www.treasury.gov/ofac/downloads/sdnlist.pdf', '_blank')">ℹ️</button>
+                                <button class="info-btn" onclick="window.open('https://www.treasury.gov/ofac/downloads/sdn.pdf', '_blank')">ℹ️</button>
                             </label>
                         
 
                             <label class="sanction-list-item">
-                                <input type="checkbox" id="lvListCheckbox">
+                                <input type="checkbox" id="lvListCheckbox" checked>
                                 <span class="custom-checkbox"></span>
                                 <span class="sanction-list-label">Latvijas sankciju saraksts</span>
                                 <button class="info-btn" onclick="window.open('https://sankcijas.fid.gov.lv/files/LV_national_v2.xml', '_blank')">ℹ️</button>
@@ -1597,22 +1648,22 @@
             
         
             // Initialize the application
-            document.addEventListener('DOMContentLoaded', function() {
-                fetchUNList();
-                
-                // Set up event listeners for checkboxes
-                document.getElementById('unListCheckbox').addEventListener('change', function() {
-                    activeLists.un = this.checked;
-                    loadSanctionsDataForSearch();
-                });
-                
-                document.getElementById('euListCheckbox').addEventListener('change', function() {
-                    activeLists.eu = this.checked;
-                    if (this.checked && euList.length === 0) {
-                        fetchEUListForCompare();
-                    }
-                    updateActiveListsStatus();
-                });
+// Add this right after DOMContentLoaded
+            document.addEventListener('DOMContentLoaded', async function() {
+                        // Set default checkboxes
+                        document.getElementById('unListCheckbox').checked = true;
+                        document.getElementById('euListCheckbox').checked = true;
+                        document.getElementById('ofacListCheckbox').checked = true;
+                        
+                        // Load all data automatically
+                        await loadAllSanctionsData();
+                        
+                        // Now search will work with all data
+                        document.getElementById('searchBtn').disabled = false;
+                        
+                        // Update active lists status
+                        updateActiveListsStatus();
+                    });
 
 
                 document.getElementById('ofacListCheckbox').addEventListener('change', async function() {
@@ -1642,19 +1693,59 @@
                     }
                     updateActiveListsStatus();
                 });
-            });
+            
 
             async function fetchOFACDataForCompare() {
                 try {
+                    updateLoadingProgress('Loading OFAC data...');
+                    
+                    // First try to use cached data
+                    const cachedData = localStorage.getItem('ofacSanctionsList');
+                    if (cachedData) {
+                        ofacList = JSON.parse(cachedData);
+                        const timestamp = localStorage.getItem('ofacSanctionsListTimestamp');
+                        updateLoadingProgress(`Using cached OFAC data (${new Date(timestamp).toLocaleString()})`);
+                        return ofacList;
+                    }
+                    
+                    // If no cache, fetch fresh data
                     const response = await fetch('/api/sanctions/list');
                     if (!response.ok) throw new Error('Failed to fetch OFAC data');
+                    
                     const { data } = await response.json();
+                    ofacList = data;
+                    
+                    // Cache the data
+                    localStorage.setItem('ofacSanctionsList', JSON.stringify(data));
+                    localStorage.setItem('ofacSanctionsListTimestamp', new Date().toISOString());
+                    
+                    updateLoadingProgress(`Loaded ${data.length} OFAC entries`);
                     return data;
+                    
                 } catch (error) {
-                    console.error('Error fetching OFAC data:', error);
-                    return [];
+                    console.error('Error loading OFAC data:', error);
+                    updateLoadingProgress('OFAC data load failed', true);
+                    throw error;
                 }
             }
+
+            async function loadInitialData() {
+            try {
+                // Load UN list by default (you can load others too)
+                await fetchUNList();
+                
+                // Optionally load other lists if needed
+                if (activeLists.eu) await fetchEUListForCompare();
+                if (activeLists.ofac) await fetchOFACDataForCompare();
+                
+                // Combine all active lists
+                loadSanctionsDataForSearch();
+                
+                console.log("Initial data loaded successfully");
+            } catch (error) {
+                console.error("Error loading initial data:", error);
+            }
+        }
 
 // UK specific functions
 async function testUKConnection() {
@@ -2447,16 +2538,36 @@ function loadCachedUKData() {
                 // Hide results when not in compare tab
                 if (tabId !== 'compare') {
                     document.getElementById('compareResults').style.display = 'none';
+                // Add data loading for specific tabs
+                if (tabId === 'search' && sanctionsData.length === 0) {
+                    loadInitialData();
                 }
-            }
+                if (tabId === 'ofac' && ofacList.length === 0) {
+                    fetchOFACDataForCompare();
+                }
+                if (tabId === 'eu' && euList.length === 0) {
+                    fetchEUListForCompare();
+                }
+            }}
         
             // Load sanctions data for search from active lists
             function loadSanctionsDataForSearch() {
                 sanctionsData = [];
-                if (activeLists.un) sanctionsData = sanctionsData.concat(unList);
-                if (activeLists.eu) sanctionsData = sanctionsData.concat(euList);
-                if (activeLists.uk) sanctionsData = sanctionsData.concat(ukList);
-                if (activeLists.ofac) sanctionsData = sanctionsData.concat(ofacList);
+                
+                // Always include these lists
+                if (unList.length > 0) sanctionsData = sanctionsData.concat(unList);
+                if (euList.length > 0) sanctionsData = sanctionsData.concat(euList);
+                if (ofacList.length > 0) sanctionsData = sanctionsData.concat(ofacList);
+                
+                // Include optional lists if their checkboxes are checked
+                if (document.getElementById('ukListCheckbox').checked && ukList.length > 0) {
+                    sanctionsData = sanctionsData.concat(ukList);
+                }
+                if (document.getElementById('lvListCheckbox').checked && lvList.length > 0) {
+                    sanctionsData = sanctionsData.concat(lvList);
+                }
+                
+                console.log(`Loaded ${sanctionsData.length} total sanctions from all sources`);
             }
         
             function isOrganization(name) {
@@ -2662,10 +2773,12 @@ function loadCachedUKData() {
                 );
             }
         
-            function updateSearchStatus(message, statusClass) {
+            function updateSearchStatus(message, type) {
                 const statusElement = document.getElementById('searchStatus');
-                statusElement.textContent = message;
-                statusElement.className = `status status-${statusClass}`;
+                if (!statusElement) return;
+                
+                statusElement.innerHTML = `<p>${message}</p>`;
+                statusElement.className = `status status-${type}`;
             }
         
             function exportToCSV() {
@@ -2683,85 +2796,113 @@ function loadCachedUKData() {
             // Compare tab functions
             async function fetchUNList() {
                 try {
-                    updateStatus('Notiek ANO saraksta lejupielāde...', 'warning');
+                    // Show loading state in UI
+                    updateSearchStatus('Loading UN sanctions data...', 'warning');
                     document.getElementById('refreshSpinner').style.display = 'inline-block';
                     
                     // Show progress bar
                     document.getElementById('progressContainer').style.display = 'block';
-                    document.getElementById('progressLabel').textContent = 'Lejupielādē ANO sarakstu...';
+                    document.getElementById('progressLabel').textContent = 'Loading UN sanctions list...';
                     document.getElementById('downloadProgress').style.width = '0%';
-            
-                    // Try to fetch from UN API directly
+
+                    // Try to fetch from UN API directly first
+                    let xmlData;
                     try {
                         const response = await fetch('https://scsanctions.un.org/resources/xml/en/consolidated.xml');
-                        if (!response.ok) throw new Error('Network response was not ok');
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         
-                        // Get the total size for progress tracking
-                        const contentLength = response.headers.get('content-length');
-                        let loaded = 0;
-                        const total = parseInt(contentLength, 10);
-                        
-                        // Create a reader to track progress
+                        // Track download progress
                         const reader = response.body.getReader();
+                        const contentLength = +response.headers.get('Content-Length');
+                        let receivedLength = 0;
                         const chunks = [];
                         
-                        while (true) {
-                            const { done, value } = await reader.read();
+                        while(true) {
+                            const {done, value} = await reader.read();
                             if (done) break;
                             
                             chunks.push(value);
-                            loaded += value.length;
+                            receivedLength += value.length;
                             
                             // Update progress
-                            const progress = Math.round((loaded / total) * 100);
+                            const progress = Math.round((receivedLength / contentLength) * 100);
                             document.getElementById('downloadProgress').style.width = `${progress}%`;
                             document.getElementById('progressLabel').textContent = 
-                                `Lejupielādē ANO sarakstu... ${progress}%`;
+                                `Downloading UN list... ${progress}%`;
                         }
                         
                         // Combine chunks
                         const blob = new Blob(chunks);
-                        const xmlData = await blob.text();
-                        unList = parseXMLData(xmlData);
-                        loadSanctionsDataForSearch();
+                        xmlData = await blob.text();
                     } catch (directError) {
-                        console.log('Direct fetch failed, trying proxy');
+                        console.log('Direct fetch failed, trying proxy:', directError);
                         
-                        // For proxy, we can't track progress as easily, so we'll just show indeterminate progress
-                        document.getElementById('progressLabel').textContent = 'Savienojas ar starpniekserveri...';
-                        
-                        const proxyResponse = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://scsanctions.un.org/resources/xml/en/consolidated.xml')}`);
+                        // Fallback to proxy
+                        document.getElementById('progressLabel').textContent = 'Using proxy connection...';
+                        const proxyResponse = await fetch(
+                            `https://api.allorigins.win/get?url=${encodeURIComponent('https://scsanctions.un.org/resources/xml/en/consolidated.xml')}`
+                        );
                         if (!proxyResponse.ok) throw new Error('Proxy fetch failed');
                         
                         const proxyData = await proxyResponse.json();
-                        unList = parseXMLData(proxyData.contents);
-                        loadSanctionsDataForSearch();
+                        xmlData = proxyData.contents;
                     }
+
+                    // Parse the XML data
+                    document.getElementById('progressLabel').textContent = 'Processing data...';
+                    document.getElementById('downloadProgress').style.width = '90%';
+                    
+                    unList = parseXMLData(xmlData);
                     
                     if (unList.length === 0) {
-                        throw new Error('No data received from UN');
+                        throw new Error('No valid data received after parsing');
                     }
-                    
+
                     // Complete progress
                     document.getElementById('downloadProgress').style.width = '100%';
-                    document.getElementById('progressLabel').textContent = 'Lejupielāde pabeigta!';
+                    document.getElementById('progressLabel').textContent = 'Load complete!';
                     
+                    // Update UI and cache
+                    updateSearchStatus(`UN list loaded (${unList.length} entries)`, 'success');
+                    loadSanctionsDataForSearch(); // Refresh search data
+                    
+                    // Hide progress after delay
                     setTimeout(() => {
                         document.getElementById('progressContainer').style.display = 'none';
                     }, 1000);
                     
-                    displayUNList(unList);
-                    updateStatus(`ANO saraksts veiksmīgi ielādēts (${unList.length} ieraksti)`, 'success');
+                    return unList;
                 } catch (error) {
                     console.error('Error fetching UN list:', error);
-                    document.getElementById('progressContainer').style.display = 'none';
-                    updateStatus('Kļūda ielādējot ANO sarakstu. Izmantojam pēdējo saglabāto versiju.', 'error');
-                    loadCachedData();
+                    
+                    // Try to load cached data
+                    const cachedData = localStorage.getItem('unSanctionsList');
+                    if (cachedData) {
+                        unList = JSON.parse(cachedData);
+                        updateSearchStatus(
+                            `Using cached UN data (${unList.length} entries)`, 
+                            'warning'
+                        );
+                        loadSanctionsDataForSearch();
+                        return unList;
+                    }
+                    
+                    // No cached data available
+                    updateSearchStatus(
+                        `Failed to load UN data: ${error.message}`, 
+                        'error'
+                    );
+                    throw error;
                 } finally {
                     document.getElementById('refreshSpinner').style.display = 'none';
+                    
+                    // Ensure progress bar is hidden if something went wrong
+                    setTimeout(() => {
+                        document.getElementById('progressContainer').style.display = 'none';
+                    }, 2000);
                 }
             }
-        
+
             function parseXMLData(xmlString) {
                 try {
                     const parser = new DOMParser();
@@ -4420,6 +4561,110 @@ function loadCachedUKData() {
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
         }
+
+        // Helper functions for loader
+            function showLoader(message = 'Loading sanctions data...') {
+            const loader = document.getElementById('globalLoader');
+            const progressText = document.getElementById('loadingProgressText');
+            
+            if (loader && progressText) {
+                progressText.textContent = message;
+                loader.classList.add('active');
+            }
+            }
+
+            function hideLoader() {
+            const loader = document.getElementById('globalLoader');
+            if (loader) {
+                loader.classList.remove('active');
+            }
+            }
+
+            function updateLoadingProgress(message, isError = false) {
+                const progressText = document.getElementById('loadingProgressText');
+                if (progressText) {
+                    progressText.textContent = message;
+                    progressText.style.color = isError ? '#e74c3c' : '#2c3e50';
+                }
+                
+                // Also update console for debugging
+                console.log(`Loading Progress: ${message}`);
+            }
+
+        async function loadAllSanctionsData() {
+            try {
+                showLoader('Loading all sanctions data...');
+                
+                // Load all data sources in parallel
+                const loadPromises = [];
+                
+                // Always load UN data
+                loadPromises.push(fetchUNList().catch(e => {
+                    console.error('UN load error:', e);
+                    updateLoadingProgress('UN data load failed', true);
+                }));
+                
+                // Check which lists are enabled
+                const shouldLoadEU = document.getElementById('euListCheckbox').checked;
+                const shouldLoadOFAC = document.getElementById('ofacListCheckbox').checked;
+                const shouldLoadUK = document.getElementById('ukListCheckbox')?.checked;
+                const shouldLoadLV = document.getElementById('lvListCheckbox')?.checked;
+                
+                if (shouldLoadEU) {
+                    loadPromises.push(fetchEUListForCompare().catch(e => {
+                        console.error('EU load error:', e);
+                        updateLoadingProgress('EU data load failed', true);
+                    }));
+                }
+                
+                if (shouldLoadOFAC) {
+                    loadPromises.push(fetchOFACDataForCompare().catch(e => {
+                        console.error('OFAC load error:', e);
+                        updateLoadingProgress('OFAC data load failed', true);
+                    }));
+                }
+                
+                // Add other lists as needed
+                if (shouldLoadUK) {
+                    loadPromises.push(fetchUKList().catch(e => {
+                        console.error('UK load error:', e);
+                        updateLoadingProgress('UK data load failed', true);
+                    }));
+                }
+                
+                if (shouldLoadLV) {
+                    loadPromises.push(fetchLVList().catch(e => {
+                        console.error('LV load error:', e);
+                        updateLoadingProgress('LV data load failed', true);
+                    }));
+                }
+                
+                await Promise.all(loadPromises);
+                
+                // Combine all loaded data
+                loadSanctionsDataForSearch();
+                
+                updateSearchStatus(`Loaded ${sanctionsData.length} total entries from all sources`, 'success');
+                
+            } catch (error) {
+                
+            } finally {
+                hideLoader();
+            }
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', async () => {
+        // Set default checkboxes
+        document.getElementById('unListCheckbox').checked = true;
+        document.getElementById('euListCheckbox').checked = true;
+        
+        // Load data
+        await loadAllSanctionsData();
+        
+        // Enable search
+        document.getElementById('searchBtn').disabled = false;
+        });
 
         function exportToPDF(matches, summary) {
             // For PDF export, we'll use the browser's print functionality
