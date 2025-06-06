@@ -1267,10 +1267,10 @@
         <!-- Search Tab -->
         <div id="search-tab" class="tab-content active">
             <div id="globalLoader" class="global-loader">
-            <div class="loader-content">
-                <div class="loading-spinner"></div>
-                <p id="loadingProgressText">Loading sanctions data...</p>
-            </div>
+                <div class="loader-content">
+                    <div class="loading-spinner"></div>
+                    <p id="loadingProgressText">Loading sanctions data...</p>
+                </div>
             </div>
             <div class="card">
                 <div class="search-section">
@@ -1649,13 +1649,25 @@
         
             // Initialize the application
 // Add this right after DOMContentLoaded
-            document.addEventListener('DOMContentLoaded', async function() {
-                        // Set default checkboxes
-                        document.getElementById('unListCheckbox').checked = true;
-                        document.getElementById('euListCheckbox').checked = true;
-                        document.getElementById('ofacListCheckbox').checked = true;
-                        
-                        // Load all data automatically
+            // Update your DOMContentLoaded event listener
+                    document.addEventListener('DOMContentLoaded', async function() {
+                    // Show loading indicator
+                    showLoader('Loading sanctions data...');
+                    
+                    // Set default checkboxes
+                    document.getElementById('unListCheckbox').checked = true;
+                    document.getElementById('euListCheckbox').checked = true;
+                    document.getElementById('ofacListCheckbox').checked = true;
+                    document.getElementById('lvListCheckbox').checked = true;
+                    
+                    // Update active lists immediately
+                    activeLists.un = true;
+                    activeLists.eu = true;
+                    activeLists.ofac = true;
+                    activeLists.lv = true;
+                    
+                    // Load all data automatically
+                    try {
                         await loadAllSanctionsData();
                         
                         // Now search will work with all data
@@ -1663,37 +1675,56 @@
                         
                         // Update active lists status
                         updateActiveListsStatus();
+                        
+                        // Hide loader
+                        hideLoader();
+                        
+                        // Optionally perform an initial search
+                        searchSanctions();
+                    } catch (error) {
+                        console.error('Initial data load failed:', error);
+                        updateSearchStatus('Failed to load initial data: ' + error.message, 'error');
+                        hideLoader();
+                    }
+                });
+
+
+                // Add these event listeners in your initialization
+                    document.getElementById('unListCheckbox').addEventListener('change', function() {
+                        activeLists.un = this.checked;
+                        if (this.checked && unList.length === 0) {
+                            fetchUNList();
+                        }
+                        updateActiveListsStatus();
+                        loadSanctionsDataForSearch();
                     });
 
-
-                document.getElementById('ofacListCheckbox').addEventListener('change', async function() {
-                    activeLists.ofac = this.checked;
-                    if (this.checked && ofacList.length === 0) {
-                        // Use the same function as the "Show OFAC" button
-                        ofacList = await fetchOFACDataForCompare();
+                    document.getElementById('euListCheckbox').addEventListener('change', function() {
+                        activeLists.eu = this.checked;
+                        if (this.checked && euList.length === 0) {
+                            fetchEUListForCompare();
+                        }
+                        updateActiveListsStatus();
                         loadSanctionsDataForSearch();
-                    } else {
-                        loadSanctionsDataForSearch();
-                    }
-                });
+                    });
 
-                document.getElementById('ukListCheckbox').addEventListener('change', function() {
-                    activeLists.uk = this.checked;
-                    if (this.checked && ukList.length === 0) {
-                        fetchUKList();
-                    } else {
+                    document.getElementById('ofacListCheckbox').addEventListener('change', function() {
+                        activeLists.ofac = this.checked;
+                        if (this.checked && ofacList.length === 0) {
+                            fetchOFACDataForCompare();
+                        }
+                        updateActiveListsStatus();
                         loadSanctionsDataForSearch();
-                    }
-                });
+                    });
 
-                document.getElementById('lvListCheckbox').addEventListener('change', function() {
-                    activeLists.lv = this.checked;
-                    if (this.checked && lvList.length === 0) {
-                        fetchLVList();
-                    }
-                    updateActiveListsStatus();
-                });
-            
+                    document.getElementById('lvListCheckbox').addEventListener('change', function() {
+                        activeLists.lv = this.checked;
+                        if (this.checked && lvList.length === 0) {
+                            fetchLVList();
+                        }
+                        updateActiveListsStatus();
+                        loadSanctionsDataForSearch();
+                    });
 
             async function fetchOFACDataForCompare() {
                 try {
@@ -2577,11 +2608,16 @@ function loadCachedUKData() {
         
             // Search tab functions
             function searchSanctions() {
+                if (sanctionsData.length === 0) {
+                    updateSearchStatus('Please wait while data is loading...', 'warning');
+                    return;
+                }
+                
                 const searchTerm = document.getElementById('searchTerm').value.trim().toLowerCase();
                 const exactMatch = document.getElementById('exactMatch').checked;
                 
                 if (!searchTerm) {
-                    updateSearchStatus('Lūdzu, ievadiet meklēšanas frāzi', 'error');
+                    updateSearchStatus('Please enter a search term', 'error');
                     return;
                 }
                 
@@ -2794,16 +2830,18 @@ function loadCachedUKData() {
             }
         
             // Compare tab functions
-            async function fetchUNList() {
+           async function fetchUNList() {
                 try {
-                    // Show loading state in UI
-                    updateSearchStatus('Loading UN sanctions data...', 'warning');
-                    document.getElementById('refreshSpinner').style.display = 'inline-block';
+                    // First check if progress elements exist
+                    const progressContainer = document.getElementById('progressContainer');
+                    const progressBar = document.getElementById('downloadProgress');
+                    const progressLabel = document.getElementById('progressLabel');
                     
-                    // Show progress bar
-                    document.getElementById('progressContainer').style.display = 'block';
-                    document.getElementById('progressLabel').textContent = 'Loading UN sanctions list...';
-                    document.getElementById('downloadProgress').style.width = '0%';
+                    if (progressContainer && progressBar && progressLabel) {
+                        progressContainer.style.display = 'block';
+                        progressLabel.textContent = 'Loading UN sanctions list...';
+                        progressBar.style.width = '0%';
+                    }
 
                     // Try to fetch from UN API directly first
                     let xmlData;
@@ -2811,34 +2849,40 @@ function loadCachedUKData() {
                         const response = await fetch('https://scsanctions.un.org/resources/xml/en/consolidated.xml');
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         
-                        // Track download progress
-                        const reader = response.body.getReader();
-                        const contentLength = +response.headers.get('Content-Length');
-                        let receivedLength = 0;
-                        const chunks = [];
-                        
-                        while(true) {
-                            const {done, value} = await reader.read();
-                            if (done) break;
+                        // Track download progress only if elements exist
+                        if (progressContainer && progressBar && progressLabel) {
+                            const reader = response.body.getReader();
+                            const contentLength = +response.headers.get('Content-Length');
+                            let receivedLength = 0;
+                            const chunks = [];
                             
-                            chunks.push(value);
-                            receivedLength += value.length;
+                            while(true) {
+                                const {done, value} = await reader.read();
+                                if (done) break;
+                                
+                                chunks.push(value);
+                                receivedLength += value.length;
+                                
+                                // Update progress if elements exist
+                                const progress = Math.round((receivedLength / contentLength) * 100);
+                                progressBar.style.width = `${progress}%`;
+                                progressLabel.textContent = `Downloading UN list... ${progress}%`;
+                            }
                             
-                            // Update progress
-                            const progress = Math.round((receivedLength / contentLength) * 100);
-                            document.getElementById('downloadProgress').style.width = `${progress}%`;
-                            document.getElementById('progressLabel').textContent = 
-                                `Downloading UN list... ${progress}%`;
+                            // Combine chunks
+                            const blob = new Blob(chunks);
+                            xmlData = await blob.text();
+                        } else {
+                            // If no progress elements, just get the text directly
+                            xmlData = await response.text();
                         }
-                        
-                        // Combine chunks
-                        const blob = new Blob(chunks);
-                        xmlData = await blob.text();
                     } catch (directError) {
                         console.log('Direct fetch failed, trying proxy:', directError);
                         
                         // Fallback to proxy
-                        document.getElementById('progressLabel').textContent = 'Using proxy connection...';
+                        if (progressLabel) {
+                            progressLabel.textContent = 'Using proxy connection...';
+                        }
                         const proxyResponse = await fetch(
                             `https://api.allorigins.win/get?url=${encodeURIComponent('https://scsanctions.un.org/resources/xml/en/consolidated.xml')}`
                         );
@@ -2849,8 +2893,12 @@ function loadCachedUKData() {
                     }
 
                     // Parse the XML data
-                    document.getElementById('progressLabel').textContent = 'Processing data...';
-                    document.getElementById('downloadProgress').style.width = '90%';
+                    if (progressLabel) {
+                        progressLabel.textContent = 'Processing data...';
+                    }
+                    if (progressBar) {
+                        progressBar.style.width = '90%';
+                    }
                     
                     unList = parseXMLData(xmlData);
                     
@@ -2858,18 +2906,24 @@ function loadCachedUKData() {
                         throw new Error('No valid data received after parsing');
                     }
 
-                    // Complete progress
-                    document.getElementById('downloadProgress').style.width = '100%';
-                    document.getElementById('progressLabel').textContent = 'Load complete!';
+                    // Complete progress if elements exist
+                    if (progressBar) {
+                        progressBar.style.width = '100%';
+                    }
+                    if (progressLabel) {
+                        progressLabel.textContent = 'Load complete!';
+                    }
                     
                     // Update UI and cache
                     updateSearchStatus(`UN list loaded (${unList.length} entries)`, 'success');
                     loadSanctionsDataForSearch(); // Refresh search data
                     
-                    // Hide progress after delay
-                    setTimeout(() => {
-                        document.getElementById('progressContainer').style.display = 'none';
-                    }, 1000);
+                    // Hide progress after delay if container exists
+                    if (progressContainer) {
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 1000);
+                    }
                     
                     return unList;
                 } catch (error) {
@@ -2894,12 +2948,18 @@ function loadCachedUKData() {
                     );
                     throw error;
                 } finally {
-                    document.getElementById('refreshSpinner').style.display = 'none';
+                    const refreshSpinner = document.getElementById('refreshSpinner');
+                    if (refreshSpinner) {
+                        refreshSpinner.style.display = 'none';
+                    }
                     
                     // Ensure progress bar is hidden if something went wrong
-                    setTimeout(() => {
-                        document.getElementById('progressContainer').style.display = 'none';
-                    }, 2000);
+                    const progressContainer = document.getElementById('progressContainer');
+                    if (progressContainer) {
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 2000);
+                    }
                 }
             }
 
@@ -4563,21 +4623,21 @@ function loadCachedUKData() {
         }
 
         // Helper functions for loader
-            function showLoader(message = 'Loading sanctions data...') {
-            const loader = document.getElementById('globalLoader');
-            const progressText = document.getElementById('loadingProgressText');
-            
-            if (loader && progressText) {
-                progressText.textContent = message;
-                loader.classList.add('active');
-            }
+           function showLoader(message = 'Loading sanctions data...') {
+                const loader = document.getElementById('globalLoader');
+                const progressText = document.getElementById('loadingProgressText');
+                
+                if (loader && progressText) {
+                    progressText.textContent = message;
+                    loader.classList.add('active');
+                }
             }
 
             function hideLoader() {
-            const loader = document.getElementById('globalLoader');
-            if (loader) {
-                loader.classList.remove('active');
-            }
+                const loader = document.getElementById('globalLoader');
+                if (loader) {
+                    loader.classList.remove('active');
+                }
             }
 
             function updateLoadingProgress(message, isError = false) {
@@ -4590,8 +4650,7 @@ function loadCachedUKData() {
                 // Also update console for debugging
                 console.log(`Loading Progress: ${message}`);
             }
-
-        async function loadAllSanctionsData() {
+      async function loadAllSanctionsData() {
             try {
                 showLoader('Loading all sanctions data...');
                 
@@ -4599,40 +4658,28 @@ function loadCachedUKData() {
                 const loadPromises = [];
                 
                 // Always load UN data
-                loadPromises.push(fetchUNList().catch(e => {
-                    console.error('UN load error:', e);
-                    updateLoadingProgress('UN data load failed', true);
-                }));
+                if (activeLists.un) {
+                    loadPromises.push(fetchUNList().catch(e => {
+                        console.error('UN load error:', e);
+                        updateLoadingProgress('UN data load failed', true);
+                    }));
+                }
                 
-                // Check which lists are enabled
-                const shouldLoadEU = document.getElementById('euListCheckbox').checked;
-                const shouldLoadOFAC = document.getElementById('ofacListCheckbox').checked;
-                const shouldLoadUK = document.getElementById('ukListCheckbox')?.checked;
-                const shouldLoadLV = document.getElementById('lvListCheckbox')?.checked;
-                
-                if (shouldLoadEU) {
+                if (activeLists.eu) {
                     loadPromises.push(fetchEUListForCompare().catch(e => {
                         console.error('EU load error:', e);
                         updateLoadingProgress('EU data load failed', true);
                     }));
                 }
                 
-                if (shouldLoadOFAC) {
+                if (activeLists.ofac) {
                     loadPromises.push(fetchOFACDataForCompare().catch(e => {
                         console.error('OFAC load error:', e);
                         updateLoadingProgress('OFAC data load failed', true);
                     }));
                 }
                 
-                // Add other lists as needed
-                if (shouldLoadUK) {
-                    loadPromises.push(fetchUKList().catch(e => {
-                        console.error('UK load error:', e);
-                        updateLoadingProgress('UK data load failed', true);
-                    }));
-                }
-                
-                if (shouldLoadLV) {
+                if (activeLists.lv) {
                     loadPromises.push(fetchLVList().catch(e => {
                         console.error('LV load error:', e);
                         updateLoadingProgress('LV data load failed', true);
@@ -4647,25 +4694,11 @@ function loadCachedUKData() {
                 updateSearchStatus(`Loaded ${sanctionsData.length} total entries from all sources`, 'success');
                 
             } catch (error) {
-                
-            } finally {
-                hideLoader();
+                console.error('Error loading all data:', error);
+                updateSearchStatus('Failed to load all data: ' + error.message, 'error');
             }
         }
-
-        // Initialize the app
-        document.addEventListener('DOMContentLoaded', async () => {
-        // Set default checkboxes
-        document.getElementById('unListCheckbox').checked = true;
-        document.getElementById('euListCheckbox').checked = true;
         
-        // Load data
-        await loadAllSanctionsData();
-        
-        // Enable search
-        document.getElementById('searchBtn').disabled = false;
-        });
-
         function exportToPDF(matches, summary) {
             // For PDF export, we'll use the browser's print functionality
             // In a real implementation, you might use a library like jsPDF or pdfmake
@@ -4733,6 +4766,25 @@ function loadCachedUKData() {
                 printWindow.print();
             }, 500);
         }
+        async function safeFetchUNList() {
+    try {
+        return await fetchUNList();
+    } catch (error) {
+        console.error('UN List loading failed:', error);
+        return []; // Return empty array as fallback
+    }
+}
+let isLoading = false;
+
+async function loadData() {
+    if (isLoading) return;
+    isLoading = true;
+    try {
+        await fetchUNList();
+    } finally {
+        isLoading = false;
+    }
+}
     </script>
 </body>
 </html>
