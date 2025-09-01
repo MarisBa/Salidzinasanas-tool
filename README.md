@@ -49,7 +49,7 @@ node server.js
 
 Open the project in your browser:
 
-http://localhost:3000
+
 
 Project Structure
 /assets        -> images, icons
